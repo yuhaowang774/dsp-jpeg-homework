@@ -1,0 +1,5 @@
+Name,Source
+peppers_gray,MATLAB bundled peppers.png; BT.601 coefficients; centered 256x256 crop
+synthetic_gradient,Generated smooth ramp; seed not required
+synthetic_texture,Generated sinusoids plus noise; rng=20261113
+synthetic_text,Generated 5x7 bitmap DSP letters and straight line

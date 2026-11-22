@@ -1,0 +1,17 @@
+JPEG experiment | MATLAB 24.2.0.2712019 (R2024b) | release 2024b
+TESTS PASSED: 21 round trips + uniform + malformed input + mathematical checks.
+Maximum independent decoder difference: 1 gray levels.
+Finished peppers_gray         custom_jpeg     (10 quality levels).
+Finished peppers_gray         custom_uniform  (10 quality levels).
+Finished peppers_gray         matlab_jpeg     (10 quality levels).
+Finished synthetic_gradient   custom_jpeg     (10 quality levels).
+Finished synthetic_gradient   custom_uniform  (10 quality levels).
+Finished synthetic_gradient   matlab_jpeg     (10 quality levels).
+Finished synthetic_texture    custom_jpeg     (10 quality levels).
+Finished synthetic_texture    custom_uniform  (10 quality levels).
+Finished synthetic_texture    matlab_jpeg     (10 quality levels).
+Finished synthetic_text       custom_jpeg     (10 quality levels).
+Finished synthetic_text       custom_uniform  (10 quality levels).
+Finished synthetic_text       matlab_jpeg     (10 quality levels).
+DONE: 120 measurements, elapsed 32.7 s.
+Results: C:\Users\26056\Desktop\DSP_homework\大作业\results
