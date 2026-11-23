@@ -66,6 +66,32 @@
   table.data tr.done{color:#94a3b8}
   .stage-flex{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
   .stage-col{flex:1;min-width:0}
+  .dct-2d-top{display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:18px;align-items:start}
+  .dct-2d-col{display:flex;flex-direction:column;gap:10px;min-width:0;align-items:center}
+  .dct-2d-col figure{display:flex;flex-direction:column;align-items:center;width:100%}
+  .dct-2d-col figcaption{align-self:flex-start}
+  .dct-2d-col .note{margin:0;line-height:1.65;align-self:stretch}
+  .dct-2d-col .stats{width:100%}
+  .dct-shift-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-bottom:16px}
+  .dct-rebuild-row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start;margin-bottom:14px}
+  .dct-rebuild-row3 figure{display:flex;flex-direction:column;align-items:center}
+  .dct-rebuild-row3 canvas{max-width:340px;margin:0 auto}
+  .dct-rebuild-row3 figcaption{text-align:left;line-height:1.45}
+  .dct-1d-figure{display:flex;flex-direction:column;align-items:center}
+  .dct-1d-figure figcaption{align-self:flex-start}
+  .dct-use-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
+  .dct-use-row>.note{margin-right:4px}
+  .dct-use-row button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 10px;font-size:11.5px;color:var(--muted);cursor:pointer}
+  .dct-use-row button:hover{border-color:#9fb3cc}
+  .dct-use-row button.on{background:var(--blue-soft);border-color:#9db8f5;color:var(--blue);font-weight:600}
+  .dct-row-picker{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
+  .dct-row-picker>.note{margin-left:4px}
+  .dct-row-picker button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 9px;font-size:11.5px;color:var(--muted);cursor:pointer}
+  .dct-row-picker button.on{background:var(--blue-soft);border-color:#9db8f5;color:var(--blue)}
+  .dct-term-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:16px;padding-top:12px;border-top:1px dashed #e2e8f0}
+  .dct-term-row figure{display:flex;flex-direction:column;align-items:center}
+  .dct-term-row canvas{max-width:300px;margin:0 auto}
+  .dct-term-row figcaption{text-align:left;line-height:1.5}
   .source-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:start;width:100%}
   .source-figure{min-width:0;max-width:100%;display:flex;flex-direction:column;align-items:center}
   .source-figure canvas{margin:0 auto;cursor:crosshair}
@@ -109,6 +135,14 @@
   .hvs-block{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:14px;background:#fbfcfe}
   .hvs-head{font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px}
   .hvs-head span{font-weight:400;color:var(--muted);font-size:11.5px;margin-left:8px}
+  .hvs-source-row{display:flex;justify-content:center;margin-bottom:10px}
+  .hvs-sliders{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .hvs-sliders label{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+  .hvs-sliders input[type=range]{width:130px}
+  .hvs-blind-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .hvs-sliders output{font-family:Consolas,monospace;font-size:11.5px;font-weight:600;color:var(--text);min-width:64px}
+  .hvs-sliders output.hvs-blind{color:var(--muted);letter-spacing:2px}
+  .hvs-conclusion{border-left:3px solid var(--blue);background:var(--blue-soft);color:#1e3a8a;padding:8px 12px;border-radius:0 8px 8px 0;font-size:12.5px;margin-top:12px}
   .hvs-block figcaption{text-align:center;line-height:1.5}
   .ok{color:var(--green);font-weight:600}
   .warn{color:var(--orange);font-weight:600}
@@ -133,6 +167,8 @@
     .grid-2,.grid-3,.grid-4,.cards{grid-template-columns:1fr}
     .stats{grid-template-columns:1fr}
     .source-layout{grid-template-columns:1fr}
+    .dct-2d-top,.dct-shift-row{grid-template-columns:1fr}
+    .dct-term-row,.dct-rebuild-row3{grid-template-columns:1fr}
     .main{top:6px;bottom:58px;padding:6px 8px 0}
     .stepper{bottom:8px}
     .left h2{font-size:16px}
@@ -225,7 +261,8 @@
     FLOWS: {
       stepEnter: { trigger: 'setStep / rebuild / 切换节点', duration: 380, easing: 'easeStandard', transition: 'opacity + translateY + scale' },
       settings: { trigger: '设置按钮 / 遮罩点击', duration: 220, debounce: 140, easing: 'easeStandard', transition: 'transform + opacity' },
-      basis: { trigger: '步骤05 基函数按钮', duration: 2800, easing: 'easeInOutCubic', transition: 'canvas 基函数累加' },
+      basis: { trigger: '步骤05 余弦叠加按钮', duration: 2800, easing: 'easeInOutCubic', transition: '一维余弦波逐项累加 + 残差回落' },
+      basissum: { trigger: '步骤05 逐项叠加重建按钮', duration: 3600, easing: 'linear', transition: '二维 64 项按 |F| 降序叠加 + 重建块逼近原块' },
       twopass: { trigger: '步骤05 行列分解按钮', duration: 2400, easing: 'easeInOutCubic', transition: '先逐行后逐列 canvas 重绘' },
       quant: { trigger: '步骤06 量化按钮', duration: 2300, easing: 'steps', transition: '量化系数逐格替换' },
       zigzag: { trigger: '步骤07 Zigzag 按钮', duration: 2560, easing: 'steps', transition: '扫描游标 + 序列条带' },
@@ -260,7 +297,6 @@
   };
 
   const LABELS = {
-    peppers_gray: '辣椒（灰度）',
     synthetic_gradient: '渐变（合成）',
     synthetic_texture: '纹理（合成）',
     synthetic_text: '文字（合成）'
@@ -300,8 +336,11 @@
     decodeStep: 0,
     idctStep: 64,
     dctView: 'coeff',
+    dctRow: -1,
+    dctUseCount: 8,
     dctRowStep: 8,
     dctColStep: 8,
+    dctSumStep: 64,
     assemblyStep: 0,
     quantTimer: null,
     rleTimer: null,
@@ -687,35 +726,130 @@
     rebuild();
   }
 
+  function blockLumaValues(blockX, blockY) {
+    const values = new Float64Array(64);
+    for (let y = 0; y < 8; y++) {
+      const sourceY = Math.min(state.height - 1, blockY * 8 + y);
+      for (let x = 0; x < 8; x++) {
+        const sourceX = Math.min(state.width - 1, blockX * 8 + x);
+        const index = (sourceY * state.width + sourceX) * 4;
+        values[y * 8 + x] = 0.299 * state.rgb[index] + 0.587 * state.rgb[index + 1] + 0.114 * state.rgb[index + 2];
+      }
+    }
+    return values;
+  }
+
+  function blockDct(values) {
+    const temporary = rowDct(values);
+    const output = new Float64Array(64);
+    for (let u = 0; u < 8; u++) {
+      for (let v = 0; v < 8; v++) {
+        let sum = 0;
+        for (let y = 0; y < 8; y++) sum += Codec.T[u][y] * temporary[y * 8 + v];
+        output[u * 8 + v] = sum;
+      }
+    }
+    return output;
+  }
+
+  /* 色度起伏：块内 Cb / Cr 的标准差（合成一个数），用来衡量“这块颜色变化明不明显”。 */
+  function blockChromaSpread(blockX, blockY) {
+    let cbSum = 0;
+    let crSum = 0;
+    let cbSquare = 0;
+    let crSquare = 0;
+    for (let y = 0; y < 8; y++) {
+      const sourceY = Math.min(state.height - 1, blockY * 8 + y);
+      for (let x = 0; x < 8; x++) {
+        const sourceX = Math.min(state.width - 1, blockX * 8 + x);
+        const index = (sourceY * state.width + sourceX) * 4;
+        const r = state.rgb[index];
+        const g = state.rgb[index + 1];
+        const b = state.rgb[index + 2];
+        const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+        const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+        cbSum += cb;
+        crSum += cr;
+        cbSquare += cb * cb;
+        crSquare += cr * cr;
+      }
+    }
+    const cbMean = cbSum / 64;
+    const crMean = crSum / 64;
+    const cbVariance = Math.max(0, cbSquare / 64 - cbMean * cbMean);
+    const crVariance = Math.max(0, crSquare / 64 - crMean * crMean);
+    return Math.sqrt(cbVariance + crVariance);
+  }
+
+  /* 默认演示块：不挑“最花”的块，而是同时满足三件事——
+     ① 结构清楚、能量集中在低中频（u+v ≤ 4），DCT 系数矩阵有可讲的形状；
+     ② 曝光适中，DC 不会压倒一切；
+     ③ 色度有起伏，YCbCr 那一步的 Cb/Cr 面板不会是一整片纯洋红/纯青。
+     于是量化后仍有保留也有置零，反量化 / IDCT 的变化肉眼可见，
+     而不是落到一片纯噪声（高频散点，量化后直接变灰）或一片天空（几乎没有交流系数、颜色也几乎不变）。 */
   function chooseDefaultBlock() {
     const columns = Math.ceil(state.width / 8);
     const rows = Math.ceil(state.height / 8);
-    let best = { x: 0, y: 0 };
+    const stride = columns > 48 ? 2 : 1;
+    const centerX = (columns - 1) / 2;
+    const centerY = (rows - 1) / 2;
+    const maxDistance = Math.max(1, Math.hypot(centerX, centerY));
+    let best = null;
     let bestScore = -1;
-    for (let blockY = 0; blockY < rows; blockY++) {
-      for (let blockX = 0; blockX < columns; blockX++) {
+    let relaxed = null;
+    let relaxedScore = -1;
+    let fallback = { x: Math.floor(columns / 2), y: Math.floor(rows / 2) };
+    let fallbackScore = -1;
+    const margin = 2;
+    for (let blockY = margin; blockY < rows - margin; blockY += stride) {
+      for (let blockX = margin; blockX < columns - margin; blockX += stride) {
+        const values = blockLumaValues(blockX, blockY);
         let sum = 0;
         let squares = 0;
-        for (let y = 0; y < 8; y++) {
-          const sourceY = Math.min(state.height - 1, blockY * 8 + y);
-          for (let x = 0; x < 8; x++) {
-            const sourceX = Math.min(state.width - 1, blockX * 8 + x);
-            const index = (sourceY * state.width + sourceX) * 4;
-            const luma = 0.299 * state.rgb[index] + 0.587 * state.rgb[index + 1] + 0.114 * state.rgb[index + 2];
-            sum += luma;
-            squares += luma * luma;
-          }
+        for (let i = 0; i < 64; i++) {
+          sum += values[i];
+          squares += values[i] * values[i];
         }
         const mean = sum / 64;
         const variance = squares / 64 - mean * mean;
-        const score = variance * (1 - Math.abs(mean - 128) / 255);
-        if (score > bestScore) {
+        if (variance > fallbackScore) {
+          fallbackScore = variance;
+          fallback = { x: blockX, y: blockY };
+        }
+        const coefficients = blockDct(values);
+        let alternating = 0;
+        let structured = 0;
+        for (let index = 1; index < 64; index++) {
+          const energy = coefficients[index] * coefficients[index];
+          alternating += energy;
+          const order = Math.floor(index / 8) + (index % 8);
+          if (order <= 4) structured += energy;
+        }
+        if (alternating < 400) continue;
+        const coherence = structured / alternating;
+        if (coherence < 0.55) continue;
+        const exposure = 1 - Math.abs(mean - 128) / 240;
+        if (exposure <= 0) continue;
+        // 色度起伏 12 个码值以上算“颜色差异明显”，给满分；全灰/单色块保留 15% 基础分，
+        // 这样灰度图（各处色度起伏都是 0）仍按结构挑块，彩色图才会为颜色让一步。
+        const chroma = blockChromaSpread(blockX, blockY);
+        const colorGain = 0.15 + 0.85 * Math.min(1, chroma / 12);
+        const distance = Math.hypot(blockX - centerX, blockY - centerY) / maxDistance;
+        const score = Math.sqrt(structured) * Math.pow(coherence, 1.5) * exposure * (1 - 0.4 * distance) * colorGain;
+        if (score > relaxedScore) {
+          relaxedScore = score;
+          relaxed = { x: blockX, y: blockY };
+        }
+        // 首选块还要满足：亮度适中（80–182，减 128 后两侧都有值，移位与 DCT 两步都好看）
+        // 且色度起伏 ≥ 8（YCbCr 那一步 Cb/Cr 面板能看出颜色变化）。
+        // 灰度图 / 单色图达不到色度条件时退回 relaxed，仍按结构挑块。
+        if (mean >= 80 && mean <= 182 && chroma >= 8 && score > bestScore) {
           bestScore = score;
           best = { x: blockX, y: blockY };
         }
       }
     }
-    return best;
+    return best || relaxed || fallback;
   }
 
   /* ------------------------------------------------------------------ */
@@ -732,6 +866,7 @@
       state.idctStep = 64;
       state.zigStep = 64;
       state.dctView = 'coeff';
+      state.dctRow = -1;
       state.dctRowStep = 8;
       state.dctColStep = 8;
       state.assemblyStep = 0;
@@ -841,9 +976,9 @@
       id: 'source', short: '源图', tag: '输入',
       title: '源图像与 8×8 分块',
       lead: 'JPEG 不直接处理整幅图，而是先把图像切成 8×8 像素块，后续所有变换都以块为单位。',
-      principle: '<p>图像按光栅顺序划分为互不重叠的 8×8 块。点击右图任意块，后续步骤都会切换到该块；默认选中纹理最丰富的块，便于观察高频系数。</p>',
+      principle: '<p>图像按光栅顺序划分为互不重叠的 8×8 块。点击右图任意块，后续步骤都会切换到该块。</p><p>默认块不是随便取的：程序在整幅图上比较所有 8×8 块，优先选<b>结构清楚（能量集中在中低频）、曝光适中（均值接近 128）、靠近画面中心</b>的一块——这样后面 DCT 系数有可讲的形状，量化后会有一部分被置零、一部分保留，反量化与 IDCT 的差别肉眼可辨；纯噪声块会变成一整片零，纯天空块又几乎没有交流系数。</p>',
       formula: '块坐标  bx = floor(x/8),  by = floor(y/8)\n块内像素  f(x, y),  x, y = 0..7',
-      tips: ['点击图像选择分析块', '每个分析块为 8×8 像素', '彩色图还会进入 YCbCr 与色度采样步骤'],
+      tips: ['点击图像选择分析块', '每个分析块为 8×8 像素', '彩色图还会进入 YCbCr 与色度采样步骤', '默认块已按“结构清楚 + 曝光适中 + 靠近中心”挑选'],
       params: function () {
         return [
           ['图像', escapeHTML(state.imageName)],
@@ -915,10 +1050,21 @@
     {
       id: 'dct', short: 'DCT', tag: '编码 04',
       title: '二维离散余弦变换',
-      lead: 'DCT 把 8×8 像素块从空间域换到频率域，能量集中到左上角少数低频系数。',
-      principle: '<p>DCT 本身可逆、不丢信息。二维 DCT 可分解为两次一维 DCT：先对每行、再对每列。左上角 (0,0) 是直流分量，越往右下频率越高。</p><p>点击右侧任意系数可查看它对应的余弦基函数；播放动画可以看到少数基函数如何叠加出原块。</p>',
-      formula: 'F(u,v) = 1/4·C(u)C(v)·ΣxΣy f(x,y)\n        ·cos((2x+1)uπ/16)·cos((2y+1)vπ/16)\nC(0)=1/√2, C(u)=1 (u>0)',
-      tips: ['左上角系数幅值通常最大', '自然图像前几个系数就占大部分能量', '高频系数对应细节与边缘'],
+      lead: 'DCT 不问“这块像素长什么样”，它问“这块像素由哪些余弦图案拼成、每种图案各占多少份”。答案就是 64 个系数。',
+      principle: '<p><b>它换了一套坐标系。</b>原来的坐标是“第几行第几列有多少亮度”，DCT 之后变成“第几种余弦图案占了多少份”。像素没变，只是换个方式描述同一块数据。</p>' +
+        '<p><b>① 先电平移位。</b>把每个像素减 128，0–255 变成 −128…+127。整块围绕 0 上下起伏后，那 63 张平均值为 0 的余弦图案才能负责“起伏”，DC 那一项专心负责“平均值”。视频里那张满是负数的 Shifted Block 就是这一步的结果；不减 128 的话，DC 会把整块拉偏，其余系数全是虚高的。</p>' +
+        '<p><b>② 64 张固定基图。</b>8×8 块有一套永远不变的 64 张余弦图案 B(u,v) = C<sub>u</sub>(y)·C<sub>v</sub>(x)：u 越大纵向条纹越密，v 越大横向条纹越密。(0,0) 是整片同色、没有任何条纹，叫 DC；(7,7) 是黑白棋盘格，频率最高。第 1 行第 1 列只是把整块乘以 1。</p>' +
+        '<p><b>③ 逐张“量”出权重。</b>把每张基图与块内像素逐点相乘再求和（内积），得到 F(u,v)。它回答“这张图案在这块里占几份”：|F| 大说明占得多，F = 0 说明这块里根本没有这种图案，<b>F 为负</b>说明亮度起伏的相位与图案相反（图案亮的地方像素反而暗）。所以 F 是权重，不是亮度，可正可负。</p>' +
+        '<p><b>④ 加权求和就能原样还原。</b>把 64 张基图各自乘以自己的 F(u,v) 再全部相加，得到的正好是原来那块像素——所以 DCT 本身不丢任何信息。视频里那只手拿“×2.2、×0.1、×1.3”的图案一层层叠上去，最后精确拼出原图，讲的就是这一步。数学上这是正交变换，帕塞瓦尔定理保证像素平方和 = 系数平方和，能量一分不少。</p>' +
+        '<p><b>⑤ 频率越高越“细”，影响越小。</b>左上角低频图案铺满整块，改它整块都会变；右下角高频图案只是细密网格，改它只影响极细的纹理。自然图像的能量绝大部分堆在低频，所以“高频砍掉”才不容易被看出；反过来，除非整块完全平坦（像素全相同），否则高频系数几乎不会全为 0。</p>',
+      formula: '电平移位：f(x,y) = p(x,y) − 128\n一维：X(k) = Σx f(x)·C_k(x)\n      C_k(x) = α_k·cos((2x+1)kπ/16)\n二维：F(u,v) = ΣxΣy f(x,y)·B_uv(x,y)   ← 内积/投影\n      B_uv(x,y) = C_u(y)·C_v(x)      ← 第 (u,v) 张基图\n反变换：f(x,y) = ΣuΣv F(u,v)·B_uv(x,y)  ← 加权求和\n分解：F = T · f · Tᵀ（先逐行，再逐列）\nα0 = 1/√8，αk(k>0) = 1/2',
+      tips: [
+        '系数是权重：正=同相位，负=反相位，0=这块里没有这种图案',
+        '一维视角：一行 8 个像素 = 8 个余弦波相加，8 项全用上残差为 0',
+        '二维 = 两次一维：先逐行（横向频率），再逐列（纵向频率）',
+        '64 项加权求和 = 原块，DCT 无损；丢信息是下一步量化干的',
+        '左上 DC 最大，越往右下频率越高、对观感影响越小'
+      ],
       params: function () {
         const block = encodedBlock();
         let energy = 0;
@@ -929,11 +1075,12 @@
           ['分量', state.component],
           ['DC 系数', formatValue(block.coefficients[0])],
           ['前 3 系数能量', (100 * top / Math.max(1e-9, energy)).toFixed(1) + '%'],
-          ['量化后非零', countNonZero(block.quantized) + ' / 64']
+          ['低频 10 项能量', lowFrequencyEnergyShare(block.coefficients) + '%']
         ];
       },
       tools: function () {
-        return '<button class="primary" data-action="basis">播放基函数合成</button><button data-action="twopass">播放行列分解</button><button data-action="dctcoeff">系数视图</button><button data-action="prevBlock">上一块</button><button data-action="nextBlock">下一块</button>';
+        return '<button class="primary" data-action="goto" data-target="dct:1">下一张：一维 DCT</button>' +
+          '<button data-action="prevBlock">上一块</button><button data-action="nextBlock">下一块</button>';
       }
     },
     {
@@ -1140,47 +1287,47 @@
       tools: function () { return ''; }
     },
     {
-      id: 'visualLuma', short: '亮度色度', tag: '原理 01',
-      title: '亮度与色度：人眼更依赖亮度',
-      lead: '人眼靠明暗和轮廓认东西，对颜色细节迟钝。JPEG 先把图像拆成亮度 Y 和色度 Cb/Cr，才能区别对待。',
-      principle: '<p>一张彩色图可以拆成<b>亮度 Y</b>（明暗）和<b>色度 Cb/Cr</b>（颜色）三层。看右边四张图：Y 保留了物体的轮廓和细节，Cb/Cr 只是大片平缓的颜色分布。</p><p>人眼对 Y 的细节非常敏感，对 Cb/Cr 的细节迟钝。这就是 JPEG 敢对色度下采样、却保留亮度全分辨率的原因。</p>',
-      formula: 'Y  = 0.299R + 0.587G + 0.114B\nCb = 128 - 0.168736R - 0.331264G + 0.5B\nCr = 128 + 0.5R - 0.418688G - 0.081312B',
-      tips: ['亮度 Y 看起来就是灰度图', 'Cb/Cr 以 128 为中性值，变化平缓', '色度细节少，才有下采样的空间'],
+      id: 'visualLuma', short: '亮度颜色', tag: '原理 01',
+      title: '人眼先看亮度，再看颜色',
+      lead: '上面是原图，下面是调亮度、调饱和度后的两张结果——都保留亮度和颜色，哪张区别更大？',
+      principle: '<p>上面是你的原图，下面第二排是同一张图分别调了<b>亮度</b>和<b>饱和度</b>的结果：② 只把亮度压低，颜色还在；③ 只把饱和度调低，明暗还在。两张图都同时包含亮度和色度，区别只在“动了哪个通道”。</p><p>视网膜上<b>视杆细胞</b>管明暗（约 1 亿 2500 万个），<b>视锥细胞</b>管颜色（约 600 万个），所以人眼对亮度敏感、对颜色迟钝。下面两个滑块各测一次：先别管数值，凭感觉拖到“明显变了”，再点按钮看实际改了多少——两个百分比会告诉你答案。JPEG 据此把 RGB 换成 <b>Y + Cb/Cr</b>，后面只对色度下采样。</p>',
+      formula: 'Y  = 0.299R + 0.587G + 0.114B  ← 亮度，细节都在这里\nCb = 128 - 0.168736R - 0.331264G + 0.5B  ← 蓝色度\nCr = 128 + 0.5R - 0.418688G - 0.081312B  ← 红色度',
+      tips: ['先别看数值：凭感觉拖到“明显变了”再点按钮', '两个通道各记一次，最后比两个百分比', 'Cb/Cr 变化平缓，才有后面下采样的空间'],
       params: function () {
         const planes = Codec.rgbToYCbCr(state.rgb, state.width, state.height);
         return [
           ['Y 均值', mean(planes.y).toFixed(1)],
           ['Cb 均值', mean(planes.cb).toFixed(1)],
           ['Cr 均值', mean(planes.cr).toFixed(1)],
-          ['图像尺寸', state.width + ' × ' + state.height]
+          ['人眼感光', '视杆 1 亿 2500 万（明暗）· 视锥 600 万（颜色）']
         ];
       },
       tools: function () { return ''; }
     },
     {
-      id: 'visualLumaCompare', short: '亮度色度·对比', tag: '原理 02',
-      title: '亮度与色度：同样砍到 1/4，差别有多大？',
-      lead: '公平对比：亮度和色度都用 2×2 平均降到 1/4、都用最近邻放大。看谁先露出像素块。',
-      principle: '<p>这次不做手脚：色度和亮度<b>砍得一样狠</b>（都是 2×2 平均、数据量都降到 1/4），放大方式也一样（最近邻，故意让丢失的像素现形）。</p><p>结果色度那张几乎没变化，亮度那张却出现明显的马赛克。说明人眼对亮度细节敏感、对色度细节迟钝。JPEG 据此只下采样色度（4:2:0 留 1/4），亮度保持全分辨率。</p><p>页面自动挑纹理最丰富的一块放大显示；实际解码会用平滑插值，但丢失的像素无法恢复。</p>',
-      formula: '色度 2×2 → 1/4  →  几乎看不出\n亮度 2×2 → 1/4  →  马赛克明显',
-      tips: ['两边倍率相同、插值相同，只有人眼敏感度不同', '自动挑纹理区放大，不是随便选的', '这就是 4:2:0 只砍色度的依据'],
+      id: 'visualLumaCompare', short: '颜色压缩', tag: '原理 02',
+      title: '压缩颜色信息：4 个色度并成 1 个',
+      lead: '亮度和色度都砍到 1/4，哪一张先露出方块？答案是亮度——所以 JPEG 第一步只砍色度。',
+      principle: '<p>把每 2×2 个色度小块取平均、合并成一个大格，就是 <b>4:2:0</b> 的色度缩减采样：亮度 8×8 块仍是 64 个样本，两个色度各只剩 16 个。</p><p>右边三张图是同一个小区域放大后的样子：色度合并后几乎看不出差别；但把<b>同样的操作</b>用在亮度上，画面立刻变成马赛克——因为人眼对亮度敏感、对颜色迟钝。JPEG 正是只砍色度、亮度全留。</p><p>页面自动挑一块纹理较多的区域放大，方便对比；实际解码会用平滑插值，但被合并掉的像素回不来了。</p>',
+      formula: 'Cb/Cr：2×2 取平均 → 1 个样本（降到 1/4）\nY：保持全分辨率  →  4:2:0\n色彩空间转换 + 色度缩减采样 = JPEG 第一步',
+      tips: ['4 个色度并 1 个，就是 4:2:0', '色度合并几乎看不出，亮度合并立刻糊', '这一步不动亮度，所以画面损失很小'],
       params: function () {
         return [
-          ['色度下采样', '2×2 → 1/4'],
-          ['亮度下采样', '2×2 → 1/4'],
-          ['放大方式', '最近邻（暴露像素）'],
+          ['色度缩减采样', '2×2 → 1 格'],
+          ['色度数据量', '1/4'],
+          ['放大方式', '最近邻（故意暴露像素）'],
           ['JPEG 实际做法', '只砍色度，亮度全留']
         ];
       },
       tools: function () { return ''; }
     },
     {
-      id: 'visualFreq', short: '低频高频', tag: '原理 03',
-      title: '低频与高频：人眼靠低频认物体',
-      lead: '低频是轮廓和大色块，高频是细纹理和噪声。丢掉哪个你还认得出这是什么？',
-      principle: '<p>把图像按 8×8 块做 DCT，再按 Zigzag 顺序排列系数：前头的低频决定轮廓和大色块，后头的高频决定细纹理和噪声。</p><p>只保留前 10 个低频系数，还能认出山景；只保留后 54 个高频系数，只剩一层纹理，完全认不出。人眼认物体靠低频，对高频不敏感。</p>',
-      formula: '低频 10 个系数  →  还能认出轮廓\n高频 54 个系数  →  只剩细纹理',
-      tips: ['低频决定“是什么”，高频决定“有多细”', '自然图像能量集中在低频', '高频看不清，才能大胆压缩'],
+      id: 'visualFreq', short: '低与高频', tag: '原理 03',
+      title: '人眼对高频不敏感，所以敢删',
+      lead: '粗棋盘格一眼看清，细棋盘格糊成一片灰——那删掉高频，你还认得出这张图吗？',
+      principle: '<p>两块棋盘格放在眼前：粗格一眼看清，细格会糊成一片灰——人眼对<b>变化很快的细密图案</b>本来就不敏感。</p><p>把图像按 8×8 块做 DCT，再按 Zigzag 顺序切开：只留前 10 个低频系数，还能认出是山景；只留后 54 个高频系数，只剩一层看不清的纹理。自然图像的能量本来就集中在低频，所以 JPEG 敢把大量高频系数置零。</p>',
+      formula: '低频：变化慢、成片、能量大 → 人眼敏感，保留\n高频：变化快、细密、能量小 → 人眼迟钝，可删',
+      tips: ['低频决定“是什么”，高频决定“有多细”', '细密条纹对比度低时，人眼几乎分辨不出', '信号“变化得快不快”，就是频率'],
       params: function () {
         return [
           ['低频系数', 'Zigzag 前 10 个'],
@@ -1194,6 +1341,152 @@
   ];
 
   const FLOW_OVERRIDES = {
+    'dct:0': function () {
+      return {
+        short: 'DCT·移位',
+        title: 'DCT ①：把亮度搬到 0 附近',
+        lead: '先把 8×8 块的每个像素减 128，0–255 变成 −128…+127，让整块围绕 0 上下波动。这一步不做压缩，只是给后面的余弦图案腾出“起伏”的空间。',
+        principle: '<p><b>为什么要减 128。</b>8 张一维余弦波里只有第 0 张（DC）的平均值非 0，其余 7 张上下对称、平均为 0；推广到二维，64 张基图里也只有 B(0,0) 是一片均匀，剩下 63 张平均值为 0。</p>' +
+          '<p>如果像素还带着 0–255 的正偏置（比如整块平均 160），这 63 张均值为 0 的图案怎么加权也凑不出 160 这个“底”，只能让 DC 一个人硬扛，其它系数被迫反向补偿、数值虚高。减掉 128 后，DC 专管平均亮度，其余 63 张专管起伏，分工才干净。</p>' +
+          '<p><b>这一步不丢信息</b>：只是整体平移，反变换时再加回 128 即可。视频里那张全是 −66、−73、−80 的“Shifted Block”，就是右图这张表。</p>' +
+          '<p><b>这 64 张基图与图像内容无关。</b>换图片、换块，64 张图案一个都不变，变的只是它们的权重 F(u,v)——到 05.4「二维」那张会看到它们排成 8×8，左上 (0,0) 是一片均匀（DC），越往右下条纹越密。</p>',
+        formula: 'p(x,y) ∈ [0,255]\nf(x,y) = p(x,y) − 128 ∈ [−128,+127]\nDC 项 mean ≠ 0 → 负责平均亮度\n其余 63 张 mean = 0 → 负责起伏\n反变换末步：像素 = clamp(round(f + 128))',
+        tips: ['减 128 是平移不是压缩，可完全还原', 'DC 管平均亮度，其余 63 张管形状', '64 张基图固定不变，只换权重', '负数表示该处比平均亮度更暗'],
+        params: function () {
+          const block = encodedBlock();
+          return [
+            ['原块范围', rangeText(block.pixels, 128)],
+            ['移位后范围', rangeText(block.pixels, 0)],
+            ['DC 系数', formatValue(block.coefficients[0])],
+            ['移位量', '128（固定）']
+          ];
+        },
+        tools: function () {
+          return '<button class="primary" data-action="goto" data-target="dct:1">下一张：一维 DCT</button>' +
+            '<button data-action="prevBlock">上一块</button><button data-action="nextBlock">下一块</button>';
+        }
+      };
+    },
+    'dct:1': function () {
+      return {
+        short: 'DCT·一维',
+        title: 'DCT ②：一行像素拆成 8 个余弦波',
+        lead: '取块里的一行：8 个像素值 = 8 个固定余弦波按权重相加。权重就是内积算出的 8 个系数，8 个权重全用上，这一行能分毫不差地还原。',
+        principle: '<p><b>8 个形状固定的波。</b>C<sub>0</sub> 是平的，C<sub>1</sub> 半个周期，越往后越密。它们两两正交（互相内积为 0），因此能像坐标轴一样张成 8 维空间——任何 8 个数都能唯一写成它们的组合。</p>' +
+          '<p><b>求权重 = 量“像不像”。</b>把这一行像素与某个波逐点相乘再求和：像 → |系数| 大；完全不像 → 0；相位相反 → 负数。视频里“这张图案乘 2.2、那张乘 0.1”，量的就是这件事。</p>' +
+          '<p><b>8 个波全用上，残差为 0。</b>所以一维 DCT 本身无损；只有只保留前几项（丢掉高频波）时才会失真，那是后面量化干的事。下面的叠加动画会看到残差从大逐步掉到 0。</p>',
+        formula: 'X(k) = Σx f(x)·C_k(x)      ← 内积求权重\nC_k(x) = α_k·cos((2x+1)kπ/16)\nf(x) = Σk X(k)·C_k(x)       ← 8 项全用 = 原行\nα0 = 1/√8，αk(k>0) = 1/2',
+        tips: ['X(0) = 这行像素减 128 后的平均值（DC）', 'X(0) 为负说明整行比中灰更暗', 'k 越大条纹越密，越靠高频', '负系数 = 相位相反（亮暗颠倒）', '点 +Xk 或上一步/下一步，可停在任意一项看残差', '8 项全用残差 0；少用几项才开始失真'],
+        params: function () {
+          const row = state.dctRow < 0 ? bestRowOfBlock() : state.dctRow;
+          const values = dctRowValues(row);
+          let peakIndex = 0;
+          for (let k = 1; k < 8; k++) if (Math.abs(values.coefficients[k]) > Math.abs(values.coefficients[peakIndex])) peakIndex = k;
+          const used = clamp(typeof state.dctUseCount === 'number' ? state.dctUseCount : 8, 0, 8);
+          let error = 0;
+          for (let k = 0; k < 8; k++) {
+            let sum = 0;
+            for (let i = 0; i < used; i++) sum += values.coefficients[i] * cosineBasis(i, k);
+            error = Math.max(error, Math.abs(sum + 128 - values.pixels[k]));
+          }
+          return [
+            ['当前行', '第 ' + (row + 1) + ' 行'],
+            ['当前叠加', used + ' / 8 项' + (used === 0 ? '（直线）' : used === 1 ? '（只有 X0）' : '（X0…X' + (used - 1) + '）')],
+            ['当前残差', used >= 8 ? '0.0（完全重合）' : error.toFixed(1)],
+            ['最大 |X(k)|', 'X(' + peakIndex + ') = ' + formatValue(values.coefficients[peakIndex])]
+          ];
+        },
+        tools: function () {
+          return '<button class="primary" data-action="basis">自动播放叠加</button>' +
+            '<button data-action="goto" data-target="dct:2">下一张：行列分解</button>' +
+            '<button data-action="prevBlock">上一块</button>';
+        }
+      };
+    },
+    'dct:3': function () {
+      return {
+        short: 'DCT·二维',
+        title: 'DCT ④：64 张基图，64 个权重',
+        lead: '上一页已经把这 64 个系数算出来了；这一页看它们各自代表什么图案、单独一项能贡献多少。系数只是权重，乘回基图才是真实影响。',
+        principle: '<p><b>基图 = 纵向余弦 × 横向余弦。</b>B(u,v) 的 u 管纵向条纹密度，v 管横向；(0,0) 是一整片均匀，(7,7) 是最密的棋盘格。</p>' +
+          '<p><b>系数是权重，不是亮度。</b>F(u,v) 由基图与整块做内积得到，只回答“这种图案在块里占几份”。F 大不代表这块“很白”，负系数也不代表“很黑”，而是图案相位相反。</p>' +
+          '<p><b>下方三联图把它摊开：</b>① 这张基图长什么样；② 乘上系数后对这块像素的加减，白是提亮、黑是压暗；③ 只留这一项、其余全部清零时能画出的块。点系数矩阵任意一格看任意一项。</p>' +
+          '<p><b>能量集中在左上。</b>自然图像的系数从左上往右下迅速变小，低频十几项常常就占了九成能量——这正是高频可以被砍掉的前提。</p>',
+        formula: 'F(u,v) = ΣxΣy f(x,y)·B_uv(x,y)\n单项贡献 = F(u,v)·B_uv(x,y)\n反变换：f = ΣuΣv F(u,v)·B_uv\n能量守恒：Σf² = ΣF²（帕塞瓦尔）',
+        tips: ['系数是权重：正=同相位，负=反相位', '|F| 越大，这一项对还原越重要', 'DC 项 = 整块平均亮度', '单项画不出原块，64 项相加才行'],
+        params: function () {
+          const block = encodedBlock();
+          return [
+            ['分量', state.component],
+            ['DC 系数', formatValue(block.coefficients[0])],
+            ['|F| 最大', formatValue(maxAbsCoefficient(block.coefficients))],
+            ['低频 10 项能量', lowFrequencyEnergyShare(block.coefficients) + '%']
+          ];
+        },
+        tools: function () {
+          return '<button class="primary" data-action="goto" data-target="dct:4">下一张：叠加重建</button>' +
+            '<button data-action="prevBlock">上一块</button><button data-action="nextBlock">下一块</button>';
+        }
+      };
+    },
+    'dct:2': function () {
+      return {
+        short: 'DCT·行列',
+        title: 'DCT ③：二维 = 先逐行、再逐列做两次一维',
+        lead: '二维 DCT 没有引入新数学：先对每一行做一维 DCT（横向频率），再对结果的每一列做一维 DCT（纵向频率）。',
+        principle: '<p><b>第一遍只动横向。</b>第 y 行 8 个像素 → 8 个横向频率系数，8 行各做一次，得到一张“中间矩阵”。此时纵向还是像素坐标，不是频率。</p>' +
+          '<p><b>第二遍动纵向。</b>对中间矩阵的每一列再做一维 DCT，纵向也变成频率，才得到最终的 F(u,v)。写成矩阵就是 F = T·f·Tᵀ。</p>' +
+          '<p><b>为什么要拆。</b>直接按二维定义算要 64×64 次乘加；拆成两次一维只需要 2×8×8×8，差了一个数量级。JPEG 当年能跑在慢速硬件上，靠的就是这个可分离性。</p>' +
+          '<p>播放动画看橙色框逐行扫过，再逐列扫过；中途那张其实是“半成品”，不是最终系数。</p>',
+        formula: 'F = T · f · Tᵀ\nT[u][x] = α_u·cos((2x+1)uπ/16)\n第一遍 T·f：每行独立 → 横向频率\n第二遍 (…)·Tᵀ：每列独立 → 纵向频率\n二维直接算 64×64 → 可分离 2×8³',
+        tips: ['第一遍后纵向仍是像素，不是频率', '第二遍才得到最终系数', '先列后行结果相同', '可分离性把乘加次数降了一个量级'],
+        params: function () {
+          return [
+            ['已处理行', state.dctRowStep + ' / 8'],
+            ['已处理列', state.dctColStep + ' / 8'],
+            ['等价矩阵式', 'F = T·f·Tᵀ'],
+            ['中间结果', '不是最终系数']
+          ];
+        },
+        tools: function () {
+          return '<button class="primary" data-action="twopass">播放行列分解</button>' +
+            '<button data-action="goto" data-target="dct:3">下一张：二维系数</button>';
+        }
+      };
+    },
+    'dct:4': function () {
+      return {
+        short: 'DCT·重建',
+        title: 'DCT ⑤：64 项加权相加 = 原块',
+        lead: '把 64 项按权重从大到小一层层叠上去：前几项搭出轮廓，其余项只补细纹；全部加完，与原块分毫不差。',
+        principle: '<p><b>叠加顺序按 |F| 降序。</b>通常前 3 项就占七成以上能量，只叠它们已经能看出这块的明暗结构；后面几十项数值很小，负责的只是细纹。</p>' +
+          '<p><b>顺序由权重决定，不是每步重新挑。</b>因为 64 张基图两两正交，残差在某个未选基图上的投影仍然等于原系数 F(u,v)，所以“按 |F| 排序”与“每步挑残差里投影最大的那张”结果完全一样。只有基图不正交时（例如过完备字典/匹配追踪），两种策略才会不同。</p>' +
+          '<p><b>64 项全加完，误差为 0。</b>这就是 DCT 无损的含义：变换本身不丢任何信息，真正的损失发生在下一步量化——那里才把系数取整、把小系数砍成 0。</p>' +
+          '<p><b>顺带解释了量化为什么专挑高频。</b>排在后面的项本来就小，砍掉后重建几乎不变；而砍掉前几项，画面立刻糊成一片。</p>',
+        formula: 'f(x,y) = ΣuΣv F(u,v)·B_uv(x,y)\n前 3 项能量占比 ≈ 70%\n64 项全加：逐像素误差 = 0\n量化：Fq = round(F/q) ← 真正丢信息处',
+        tips: ['点「下一步」每次加一项，重建块逐步贴近原块', '按 |F| 排序叠加，最快看到轮廓', '小项只补细节，砍掉不明显', '全加完误差为 0，DCT 无损', '量化才是主动丢信息的一步'],
+        params: function () {
+          const block = encodedBlock();
+          const count = clamp(Math.round(state.dctSumStep), 0, 64);
+          const order = dctSumOrder(block.coefficients);
+          let totalEnergy = 0;
+          let usedEnergy = 0;
+          for (let i = 0; i < 64; i++) totalEnergy += block.coefficients[i] * block.coefficients[i];
+          for (let i = 0; i < count; i++) usedEnergy += block.coefficients[order[i]] * block.coefficients[order[i]];
+          return [
+            ['已叠加项', count + ' / 64'],
+            ['占总能量', (totalEnergy > 0 ? (100 * usedEnergy / totalEnergy).toFixed(1) : '0.0') + '%'],
+            ['当前重建误差', count >= 64 ? '0（无损）' : '见右侧读数'],
+            ['下一步', '量化：round(F / q)']
+          ];
+        },
+        tools: function () {
+          return '<button class="primary" data-action="basissum">自动播放叠加</button>' +
+            '<button data-action="goto" data-target="quant">下一章：量化</button>' +
+            '<button data-action="prevBlock">上一块</button><button data-action="nextBlock">下一块</button>';
+        }
+      };
+    },
     result: function () {
       return {
         short: '二次压缩结果',
@@ -1208,7 +1501,8 @@
   function flowStep(index) {
     const entry = FLOW_ENTRIES[clamp(index, 0, FLOW_ENTRIES.length - 1)];
     const base = STEPS[entry.step];
-    const override = FLOW_OVERRIDES[entry.chapter];
+    /* 先找 chapter:subIndex 的覆盖（DCT 五页各一份），再退回整章覆盖 */
+    const override = FLOW_OVERRIDES[entry.chapter + ':' + entry.subIndex] || FLOW_OVERRIDES[entry.chapter];
     const extra = override ? override(entry) : null;
     return extra ? Object.assign({}, base, extra) : base;
   }
@@ -1456,22 +1750,68 @@
   }
 
   function renderDctStep() {
-    if (state.dctView === 'twopass') {
-      renderDctTwoPass();
-      return;
-    }
-    stage.innerHTML = '<div class="stage-flex"><div class="stage-col">' +
-      figure('dctMain', 'DCT 系数 F(u,v)（点击选择基函数）') +
-      '</div><div style="width:300px">' +
-      figure('dctBasis', '基函数 / 合成结果') +
+    const view = state.dctView;
+    if (view === 'shift') { renderDctShift(); return; }
+    if (view === 'twopass') { renderDctTwoPass(); return; }
+    if (view === 'oneD') { renderDctOneD(); return; }
+    if (view === 'rebuild') { renderDctRebuild(); return; }
+    renderDctBasisView();
+  }
+
+  /* ① 电平移位：原块 0–255 → 减 128 → 64 张固定基图 */
+  function renderDctShift() {
+    const block = encodedBlock();
+    stage.innerHTML = '<div class="dct-shift-row">' +
+      figure('shiftOriginal', '① 原块 p(x,y)：0–255，亮度只有正数') +
+      figure('shiftCentered', '② 减 128 后 f(x,y)：−128…+127，围绕 0 上下波动') +
+      '</div>' +
+      '<p class="note" id="shiftReadout"></p>';
+    drawCells(setupCanvas('shiftOriginal', 460, 460), block.pixels, function (value) {
+      const level = clamp(Math.round(value + 128), 0, 255);
+      return [level, level, level];
+    }, {
+      text: function (value) { return String(Math.round(value + 128)); },
+      gridColor: 'rgba(255,255,255,0.6)'
+    });
+    drawCells(setupCanvas('shiftCentered', 460, 460), block.pixels, function (value) {
+      return heatColor(value, 128, true);
+    }, {
+      text: function (value) { return String(Math.round(value)); },
+      gridColor: 'rgba(255,255,255,0.6)'
+    });
+    refreshShiftReadout();
+  }
+
+  function refreshShiftReadout() {
+    const readout = document.getElementById('shiftReadout');
+    if (!readout) return;
+    readout.textContent = '为什么先减 128：64 张基图里只有第 (0,0) 张的平均值非 0，其余 63 张平均值都是 0。' +
+      '如果块的平均亮度还留着（比如 160），这 63 张均值为 0 的图案怎么也凑不出这个偏置，只能让 DC 硬扛，其它系数被带偏。' +
+      '减完 128 后，DC 专管平均亮度，AC 专管起伏，各司其职。右图里红色 = 比平均亮（正），蓝色 = 比平均暗（负）。';
+  }
+
+  /* ③ 二维视角：系数矩阵 + 单项贡献三联图 */
+  function renderDctBasisView() {
+    const block = encodedBlock();
+    stage.innerHTML = '<div class="dct-2d-top"><div class="dct-2d-col">' +
+      figure('dctMain', 'DCT 系数矩阵 F(u,v)：点任意一格（或右侧基图）看这一项的贡献') +
       '<p class="note" id="dctReadout"></p>' +
       statBlock([
         ['分量', state.component],
-        ['DC', formatValue(encodedBlock().coefficients[0])],
-        ['DCT 系数非零', countNonZero(encodedBlock().coefficients) + ' / 64']
-      ]) + '</div></div>';
-    const target = setupCanvas('dctMain', 520, 520);
-    drawDctMain(target);
+        ['DC 系数', formatValue(block.coefficients[0])],
+        ['|F| 最大', formatValue(maxAbsCoefficient(block.coefficients))],
+        ['低频 10 项能量', lowFrequencyEnergyShare(block.coefficients) + '%']
+      ]) +
+      '</div><div class="dct-2d-col">' +
+      figure('dctBasis', '64 张余弦基图像 B(u,v)：行 u = 纵向频率，列 v = 横向频率，点任意一张选中它') +
+      '</div></div>' +
+      '<div class="dct-term-row">' +
+      figure('dctTermBasis', '① 基图 B(u,v)：固定图案') +
+      figure('dctTermContribution', '② 基图 × 系数 F(u,v)：白=加亮，黑=压暗') +
+      figure('dctTermRebuild', '③ 只留这一项能画出的块（+128）') +
+      '</div>';
+    const target = setupCanvas('dctMain', 400, 400);
+    drawCoefficientMatrix(target);
     target.canvas.addEventListener('click', function (event) {
       const rectangle = target.canvas.getBoundingClientRect();
       const x = (event.clientX - rectangle.left) / rectangle.width * target.w;
@@ -1479,73 +1819,1018 @@
       const column = clamp(Math.floor(x / (target.w / 8)), 0, 7);
       const row = clamp(Math.floor(y / (target.h / 8)), 0, 7);
       state.selectedCoeff = row * 8 + column;
-      state.basis = null;
-      renderDctStep();
+      renderDctBasisView();
     });
-    drawBasisInset();
+    const gallery = setupCanvas('dctBasis', 700, 700);
+    drawBasisGallery(gallery);
+    gallery.canvas.addEventListener('click', function (event) {
+      const rectangle = gallery.canvas.getBoundingClientRect();
+      const x = (event.clientX - rectangle.left) / rectangle.width * gallery.w;
+      const y = (event.clientY - rectangle.top) / rectangle.height * gallery.h;
+      const cell = (gallery.w - BASIS_GAP * 9) / 8;
+      const column = clamp(Math.floor((x - BASIS_GAP) / (cell + BASIS_GAP)), 0, 7);
+      const row = clamp(Math.floor((y - BASIS_GAP) / (cell + BASIS_GAP)), 0, 7);
+      state.selectedCoeff = row * 8 + column;
+      renderDctBasisView();
+    });
+    const selected = resolvedSelectedCoeff(block.coefficients);
+    drawDctTermViews(setupCanvas('dctTermBasis', 300, 300),
+      setupCanvas('dctTermContribution', 300, 300),
+      setupCanvas('dctTermRebuild', 300, 300), selected);
+    const readout = document.getElementById('dctReadout');
+    readout.textContent = describeCoefficient(block.coefficients, selected);
   }
 
-  function drawDctMain(target) {
+  /* ⑤ 重建：64 项按 |F| 降序叠加，看它怎样一步步逼回原块 */
+  function renderDctRebuild() {
+    if (typeof state.dctSumStep !== 'number') state.dctSumStep = 64;
+    stage.innerHTML = '<div class="dct-use-row">' +
+      '<span class="note">逐项叠加：按 |F| 从大到小，一次加一项</span>' +
+      rebuildStepButtons(state.dctSumStep) +
+      '</div>' +
+      '<div class="dct-rebuild-row3">' +
+      figure('rebuildTarget', '① 原块目标（+128 显示）') +
+      figure('rebuildSum', '② 当前重建块：已叠加项之和（+128）') +
+      figure('rebuildTerm', '③ 刚加入的那一项 F(u,v)·B(u,v)：白=加亮，黑=压暗（按该项峰值归一化）') +
+      '</div>' +
+      figure('rebuildBars', '64 项按 |F| 从大到小排开：柱高 = 系数大小，蓝 = 已叠加，灰 = 还没用上') +
+      '<p class="note" id="rebuildInfo"></p>';
+    Array.prototype.forEach.call(stage.querySelectorAll('.dct-use-row button'), function (button) {
+      button.addEventListener('click', function () {
+        const set = button.getAttribute('data-set');
+        if (set !== null) { applyRebuildStep(Number(set)); return; }
+        applyRebuildStep(state.dctSumStep + Number(button.getAttribute('data-step')));
+      });
+    });
+    drawDctRebuildViews();
+  }
+
+  function rebuildStepButtons(count) {
+    function cls(value) { return value === count ? ' class="on"' : ''; }
+    return '<button data-set="0"' + cls(0) + '>清空</button>' +
+      '<button data-step="-1">◀ 上一步</button>' +
+      '<button data-step="1">下一步 ▶</button>' +
+      '<button data-step="8">+8 项</button>' +
+      '<button data-set="16"' + cls(16) + '>前 16</button>' +
+      '<button data-set="32"' + cls(32) + '>前 32</button>' +
+      '<button data-set="64"' + cls(64) + '>全部 64</button>';
+  }
+
+  /* 手动步进：与一维页同一套逻辑，count = 已叠加的项数 */
+  function applyRebuildStep(count) {
+    stopVisualAnimations();
+    state.dctSumStep = clamp(Math.round(count), 0, 64);
+    drawDctRebuildViews();
+    syncRebuildButtons();
+    refreshStepParams();
+  }
+
+  function syncRebuildButtons() {
+    Array.prototype.forEach.call(stage.querySelectorAll('.dct-use-row button'), function (button) {
+      const value = button.getAttribute('data-set');
+      if (value === null) return;
+      button.classList.toggle('on', Number(value) === state.dctSumStep);
+    });
+  }
+
+  /* 没点选时默认展示“AC 里最大的那一项”：DC 是一整片均匀，看不出图案差别 */
+  function resolvedSelectedCoeff(coefficients) {
+    if (state.selectedCoeff >= 0) return state.selectedCoeff;
+    let best = 1;
+    for (let i = 2; i < 64; i++) if (Math.abs(coefficients[i]) > Math.abs(coefficients[best])) best = i;
+    return best;
+  }
+
+  function describeCoefficient(coefficients, index) {
+    const u = Math.floor(index / 8);
+    const v = index % 8;
+    const value = coefficients[index];
+    const name = index === 0 ? 'DC（整块的平均亮度）' :
+      '第 ' + u + ' 阶纵向 × 第 ' + v + ' 阶横向频率';
+    let total = 0;
+    for (let i = 0; i < 64; i++) total += coefficients[i] * coefficients[i];
+    const share = total > 0 ? (100 * value * value / total) : 0;
+    const sign = value > 0.05 ? '正数 → 这块在该图案上是“亮的”，按原相位叠上去' :
+      value < -0.05 ? '负数 → 相位相反：图案亮的地方这块反而暗，叠加时要倒过来' :
+        '接近 0 → 这块里几乎没有这种图案，叠不叠都看不出差别';
+    return 'F(' + u + ',' + v + ') = ' + formatValue(value) + '，' + name + '；占总能量 ' + share.toFixed(1) + '%。' + sign +
+      '。64 项全部相加就精确等于原块，一项不落。';
+  }
+
+  const DCT_ZIG = (function () {
+    const list = [];
+    for (let diagonal = 0; diagonal <= 14; diagonal++) {
+      const rows = [];
+      for (let row = Math.max(0, diagonal - 7); row <= Math.min(7, diagonal); row++) rows.push(row);
+      if (diagonal % 2 === 0) rows.reverse();
+      for (let i = 0; i < rows.length; i++) list.push(rows[i] * 8 + (diagonal - rows[i]));
+    }
+    return list;
+  })();
+
+  function lowFrequencyEnergyShare(coefficients) {
+    let total = 0;
+    let low = 0;
+    for (let i = 0; i < 64; i++) total += coefficients[i] * coefficients[i];
+    for (let i = 0; i < 10; i++) {
+      const value = coefficients[DCT_ZIG[i]];
+      low += value * value;
+    }
+    return total > 0 ? (100 * low / total).toFixed(1) : '0.0';
+  }
+
+  function basisValue(u, v, x, y) {
+    return Codec.T[u][y] * Codec.T[v][x];
+  }
+
+  /* 基图灰度映射的唯一刻度：128 为零电平，±BASIS_CONTRAST 对应 ±1，正负严格对称 */
+  const BASIS_CONTRAST = 124;
+
+  function drawBasisTile(target, u, v) {
+    const context = target.ctx;
+    const cell = target.w / 8;
+    /* 按这张基图自身的峰值归一化，保证每张都看得清条纹 */
+    let tilePeak = 1 / 64;
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) tilePeak = Math.max(tilePeak, Math.abs(basisValue(u, v, x, y)));
+    }
+    context.clearRect(0, 0, target.w, target.h);
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        const level = clamp(Math.round(128 + BASIS_CONTRAST * basisValue(u, v, x, y) / tilePeak), 0, 255);
+        context.fillStyle = 'rgb(' + level + ',' + level + ',' + level + ')';
+        context.fillRect(x * cell, y * cell, cell + 0.5, cell + 0.5);
+      }
+    }
+    context.strokeStyle = 'rgba(148,163,184,0.65)';
+    context.lineWidth = 1;
+    for (let i = 0; i <= 8; i++) {
+      context.beginPath(); context.moveTo(i * cell, 0); context.lineTo(i * cell, target.h); context.stroke();
+      context.beginPath(); context.moveTo(0, i * cell); context.lineTo(target.w, i * cell); context.stroke();
+    }
+  }
+
+  function drawDctTermViews(basisTarget, contributionTarget, rebuildTarget, index) {
+    if (!basisTarget || !contributionTarget || !rebuildTarget) return;
+    const coefficients = encodedBlock().coefficients;
+    const u = Math.floor(index / 8);
+    const v = index % 8;
+    const weight = coefficients[index];
+    drawBasisTile(basisTarget, u, v);
+    /* 满刻度取 |F| 最大项的峰值，这样大项白得刺眼、小项几乎全灰，能看出“份量” */
+    const peak = Math.max(0.5, maxAbsCoefficient(coefficients) * 0.5);
+    const context = contributionTarget.ctx;
+    const cell = contributionTarget.w / 8;
+    context.clearRect(0, 0, contributionTarget.w, contributionTarget.h);
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        const ratio = clamp(weight * basisValue(u, v, x, y) / peak, -1, 1);
+        /* 开方压缩：大项仍然刺眼，小项也能看出图案走向，不至于全灰 */
+        const shaped = Math.sign(ratio) * Math.pow(Math.abs(ratio), 0.5);
+        const level = clamp(Math.round(128 + 126 * shaped), 0, 255);
+        context.fillStyle = 'rgb(' + level + ',' + level + ',' + level + ')';
+        context.fillRect(x * cell, y * cell, cell + 0.5, cell + 0.5);
+      }
+    }
+    context.strokeStyle = 'rgba(148,163,184,0.65)';
+    context.lineWidth = 1;
+    for (let i = 0; i <= 8; i++) {
+      context.beginPath(); context.moveTo(i * cell, 0); context.lineTo(i * cell, contributionTarget.h); context.stroke();
+      context.beginPath(); context.moveTo(0, i * cell); context.lineTo(contributionTarget.w, i * cell); context.stroke();
+    }
+    const single = new Float64Array(64);
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) single[y * 8 + x] = weight * basisValue(u, v, x, y);
+    }
+    drawCells(rebuildTarget, single, function (value) {
+      const level = clamp(Math.round(128 + value), 0, 255);
+      return [level, level, level];
+    }, { gridColor: 'rgba(148,163,184,0.5)' });
+  }
+
+  function dctSumOrder(coefficients) {
+    const order = [];
+    for (let i = 0; i < 64; i++) order.push(i);
+    order.sort(function (a, b) { return Math.abs(coefficients[b]) - Math.abs(coefficients[a]); });
+    return order;
+  }
+
+  function reconstructBlock(coefficients, order, count) {
+    const output = new Float64Array(64);
+    for (let i = 0; i < count; i++) {
+      const index = order[i];
+      const u = Math.floor(index / 8);
+      const v = index % 8;
+      const weight = coefficients[index];
+      for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) output[y * 8 + x] += weight * basisValue(u, v, x, y);
+      }
+    }
+    return output;
+  }
+
+  function drawDctRebuildViews() {
     const block = encodedBlock();
-    if (state.basis && state.basis.active) {
-      const sum = new Float64Array(64);
-      for (let k = 0; k < state.basis.step; k++) {
-        const index = state.basis.order[k];
+    const target = setupCanvas('rebuildTarget', 340, 340);
+    const rebuilt = setupCanvas('rebuildSum', 340, 340);
+    const termTarget = setupCanvas('rebuildTerm', 340, 340);
+    if (!target || !rebuilt) return;
+    const count = clamp(Math.round(typeof state.dctSumStep === 'number' ? state.dctSumStep : 64), 0, 64);
+    const order = dctSumOrder(block.coefficients);
+    drawCells(target, block.pixels, function (value) {
+      const level = clamp(Math.round(value + 128), 0, 255);
+      return [level, level, level];
+    }, { gridColor: 'rgba(148,163,184,0.5)' });
+    const sum = reconstructBlock(block.coefficients, order, count);
+    drawCells(rebuilt, sum, function (value) {
+      const level = clamp(Math.round(value + 128), 0, 255);
+      return [level, level, level];
+    }, { gridColor: 'rgba(148,163,184,0.5)' });
+
+    /* 刚加入的那一项：F(u,v)·B(u,v)，就是视频里“这张图案乘这个权重” */
+    if (termTarget) {
+      const term = new Float64Array(64);
+      if (count > 0) {
+        const index = order[count - 1];
+        const weight = block.coefficients[index];
         const u = Math.floor(index / 8);
         const v = index % 8;
-        const coefficient = state.basis.F[index];
         for (let y = 0; y < 8; y++) {
-          for (let x = 0; x < 8; x++) sum[y * 8 + x] += coefficient * Codec.T[u][x] * Codec.T[v][y];
+          for (let x = 0; x < 8; x++) term[y * 8 + x] = weight * basisValue(u, v, x, y);
         }
       }
-      drawCells(target, sum, function (value) { return grayColor(value + 128); }, {
-        gridColor: 'rgba(255,255,255,0.55)'
-      });
-      target.ctx.fillStyle = 'rgba(21,32,51,0.82)';
-      target.ctx.fillRect(0, 0, target.w, 30);
-      target.ctx.fillStyle = '#fff';
-      target.ctx.font = '600 12.5px "Microsoft YaHei", sans-serif';
-      target.ctx.textAlign = 'left';
-      target.ctx.textBaseline = 'middle';
-      let used = 0;
-      for (let k = 0; k < state.basis.step; k++) used += Math.pow(state.basis.F[state.basis.order[k]], 2);
-      target.ctx.fillText('基函数合成 ' + state.basis.step + '/64 · 已含能量 ' + (100 * used / Math.max(1e-9, state.basis.totalEnergy)).toFixed(1) + '%', 9, 15);
-    } else {
-      let maximum = 1;
-      for (let i = 0; i < 64; i++) maximum = Math.max(maximum, Math.abs(block.coefficients[i]));
-      drawCells(target, block.coefficients, function (value) { return heatColor(value, maximum, true); }, {
-        text: function (value) { return formatValue(value); },
-        highlight: state.selectedCoeff,
-        gridColor: 'rgba(255,255,255,0.75)'
-      });
+      let termPeak = 1 / 64;
+      for (let i = 0; i < 64; i++) termPeak = Math.max(termPeak, Math.abs(term[i]));
+      drawCells(termTarget, term, function (value) {
+        const level = clamp(Math.round(128 + 124 * value / termPeak), 0, 255);
+        return [level, level, level];
+      }, { gridColor: 'rgba(148,163,184,0.45)' });
+    }
+
+    drawRebuildBars(setupCanvas('rebuildBars', 1120, 230), order, count);
+
+    let totalEnergy = 0;
+    let usedEnergy = 0;
+    for (let i = 0; i < 64; i++) totalEnergy += block.coefficients[i] * block.coefficients[i];
+    for (let i = 0; i < count; i++) usedEnergy += block.coefficients[order[i]] * block.coefficients[order[i]];
+    let worst = 0;
+    for (let i = 0; i < 64; i++) {
+      const original = Math.round(clamp(block.pixels[i] + 128, 0, 255));
+      const value = clamp(Math.round(sum[i] + 128), 0, 255);
+      worst = Math.max(worst, Math.abs(original - value));
+    }
+    const info = document.getElementById('rebuildInfo');
+    if (info) {
+      const share = totalEnergy > 0 ? (100 * usedEnergy / totalEnergy) : 0;
+      const lastIndex = count > 0 ? order[count - 1] : -1;
+      const lastText = lastIndex < 0 ? '' :
+        '刚加入第 ' + count + ' 项 F(' + Math.floor(lastIndex / 8) + ',' + (lastIndex % 8) + ') = ' +
+        formatValue(block.coefficients[lastIndex]) + '。';
+      info.textContent = '已叠加 ' + count + ' / 64 项，占总能量 ' + share.toFixed(1) + '%。' + lastText +
+        (count >= 64 ? '64 项全部加完，与原块完全一致（最大误差 ' + worst + '）——这就是 DCT 无损的含义。'
+          : '最大的几项先搭出轮廓，剩下的小项只补细纹；当前最大像素误差 ' + worst + '。');
     }
   }
 
-  function drawBasisInset() {
-    const target = setupCanvas('dctBasis', 300, 300);
-    if (state.selectedCoeff >= 0) {
-      const u = Math.floor(state.selectedCoeff / 8);
-      const v = state.selectedCoeff % 8;
-      const values = new Float64Array(64);
-      for (let y = 0; y < 8; y++) {
-        for (let x = 0; x < 8; x++) values[y * 8 + x] = Codec.T[u][x] * Codec.T[v][y];
-      }
-      drawCells(target, values, function (value) { return heatColor(value, 0.5, true); }, {
-        gridColor: 'rgba(255,255,255,0.5)'
-      });
-      document.getElementById('dctReadout').textContent =
-        'B(' + u + ',' + v + ') 系数 ' + formatValue(encodedBlock().coefficients[state.selectedCoeff]) +
-        '；点击系数查看对应基函数。';
-    } else {
-      target.ctx.fillStyle = '#eef2f7';
-      target.ctx.fillRect(0, 0, target.w, target.h);
-      target.ctx.fillStyle = '#64748b';
-      target.ctx.font = '12px "Microsoft YaHei", sans-serif';
-      target.ctx.textAlign = 'center';
-      target.ctx.textBaseline = 'middle';
-      target.ctx.fillText('点击左侧系数', target.w / 2, target.h / 2);
-      document.getElementById('dctReadout').textContent = '点击系数查看余弦基函数。';
+  function drawRebuildBars(target, order, count) {
+    const context = target.ctx;
+    const coefficients = encodedBlock().coefficients;
+    context.clearRect(0, 0, target.w, target.h);
+    const left = 34;
+    const right = target.w - 16;
+    const bottom = target.h - 26;
+    const top = 18;
+    let maximum = 1;
+    for (let i = 0; i < 64; i++) maximum = Math.max(maximum, Math.abs(coefficients[i]));
+    const slot = (right - left) / 64;
+    const width = Math.max(2.5, slot * 0.62);
+    for (let i = 0; i < 64; i++) {
+      const value = Math.abs(coefficients[order[i]]);
+      const height = (value / maximum) * (bottom - top);
+      const x = left + i * slot + (slot - width) / 2;
+      context.fillStyle = i < count ? 'rgba(29,78,216,0.88)' : 'rgba(148,163,184,0.45)';
+      context.fillRect(x, bottom - Math.max(1.5, height), width, Math.max(1.5, height));
     }
+    context.strokeStyle = 'rgba(148,163,184,0.75)';
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(left, bottom + 0.5);
+    context.lineTo(right, bottom + 0.5);
+    context.stroke();
+    context.fillStyle = '#94a3b8';
+    context.font = '10.5px Consolas, monospace';
+    context.textAlign = 'left';
+    context.textBaseline = 'top';
+    context.fillText('|F| 最大', left, 2);
+    context.fillText('第 1 项（最大）', left, bottom + 5);
+    context.textAlign = 'right';
+    context.fillText('第 64 项（最小）', right, bottom + 5);
+  }
+
+  function maxAbsCoefficient(values) {
+    let maximum = 1;
+    for (let i = 0; i < values.length; i++) maximum = Math.max(maximum, Math.abs(values[i]));
+    return maximum;
+  }
+
+  function drawCoefficientMatrix(target) {
+    const block = encodedBlock();
+    const maximum = maxAbsCoefficient(block.coefficients);
+    drawCells(target, block.coefficients, function (value) { return heatColor(value, maximum, true); }, {
+      text: function (value) { return formatValue(value); },
+      highlight: resolvedSelectedCoeff(block.coefficients),
+      gridColor: 'rgba(255,255,255,0.75)'
+    });
+  }
+
+  const BASIS_GAP = 6;
+
+  function drawBasisGallery(target) {
+    const context = target.ctx;
+    const active = resolvedSelectedCoeff(encodedBlock().coefficients);
+    const cell = (target.w - BASIS_GAP * 9) / 8;
+    const pixel = cell / 8;
+    context.clearRect(0, 0, target.w, target.h);
+    for (let u = 0; u < 8; u++) {
+      for (let v = 0; v < 8; v++) {
+        const index = u * 8 + v;
+        const originX = BASIS_GAP + v * (cell + BASIS_GAP);
+        const originY = BASIS_GAP + u * (cell + BASIS_GAP);
+        /* 这 64 张是与图像无关的固定基图：每格按自身峰值归一化后统一画成
+           128 ± BASIS_CONTRAST，零电平恒为 128、亮暗严格对称，
+           并且 (u,v) 与 (v,u) 只差一次转置，正好关于主对角线成对 */
+        let tileMaximum = 1 / 64;
+        for (let y = 0; y < 8; y++) {
+          for (let x = 0; x < 8; x++) tileMaximum = Math.max(tileMaximum, Math.abs(Codec.T[u][y] * Codec.T[v][x]));
+        }
+        for (let y = 0; y < 8; y++) {
+          for (let x = 0; x < 8; x++) {
+            const value = Codec.T[u][y] * Codec.T[v][x] / tileMaximum;
+            const level = clamp(Math.round(128 + BASIS_CONTRAST * value), 0, 255);
+            context.fillStyle = 'rgb(' + level + ',' + level + ',' + level + ')';
+            context.fillRect(originX + x * pixel, originY + y * pixel, pixel + 0.5, pixel + 0.5);
+          }
+        }
+        const selected = active === index;
+        context.strokeStyle = selected ? '#1d4ed8' : 'rgba(148,163,184,0.7)';
+        context.lineWidth = selected ? 2.5 : 1;
+        context.strokeRect(originX + 0.5, originY + 0.5, cell - 1, cell - 1);
+        context.fillStyle = selected ? 'rgba(232,239,255,0.92)' : 'rgba(255,255,255,0.5)';
+        context.fillRect(originX + 2, originY + 2, 19, 10);
+        context.fillStyle = selected ? '#1d4ed8' : 'rgba(21,32,51,0.5)';
+        context.font = '600 8.5px Consolas, monospace';
+        context.textAlign = 'left';
+        context.textBaseline = 'top';
+        context.fillText(u + ',' + v, originX + 3.5, originY + 3);
+      }
+    }
+  }
+
+  /* 一维视角：一行像素 → 8 个系数 → 余弦波加权求和 */
+  function renderDctOneD() {
+    if (typeof state.dctRow !== 'number' || state.dctRow < 0) state.dctRow = bestRowOfBlock();
+    if (typeof state.dctUseCount !== 'number') state.dctUseCount = 8;
+    const row = state.dctRow;
+    stage.innerHTML = '<div class="dct-row-picker">' +
+      Array.from({ length: 8 }, function (_, index) {
+        return '<button data-index="' + index + '" class="' + (index === row ? 'on' : '') + '">第 ' + (index + 1) + ' 行</button>';
+      }).join('') +
+      '<span class="note">任选一行：同一套余弦波，只是权重不同</span></div>' +
+      '<div class="dct-use-row">' +
+      '<span class="note">逐步逼近：只保留前 N 个余弦波</span>' + rowUseButtons(state.dctUseCount) +
+      '</div>' +
+      figure('dctRowBasis', '① 上排：8 个余弦波 × 各自权重 X(k)（波形高度按 |X|^0.5 压缩，下方细条是真实占比）' +
+        '；② 下排左：第 ' + (row + 1) + ' 行逐项叠加的逼近过程（○ 原行目标值、● 当前叠加值、橙线 = 残差）' +
+        '；下排右：下一次会加入的那一项', 'dct-1d-figure') +
+      '<p class="note" id="dctRowReadout"></p>';
+    Array.prototype.forEach.call(stage.querySelectorAll('.dct-row-picker button'), function (button) {
+      button.addEventListener('click', function () {
+        const index = Number(button.getAttribute('data-index'));
+        if (!isFinite(index) || index === state.dctRow) return;
+        stopVisualAnimations();
+        state.dctRow = index;
+        renderDctOneD();
+      });
+    });
+    Array.prototype.forEach.call(stage.querySelectorAll('.dct-use-row button'), function (button) {
+      button.addEventListener('click', function () {
+        const delta = button.getAttribute('data-step');
+        if (delta !== null) {
+          applyRowUse(state.dctUseCount + Number(delta));
+          return;
+        }
+        const use = Number(button.getAttribute('data-use'));
+        if (!isFinite(use)) return;
+        applyRowUse(use);
+      });
+    });
+    drawRowBasis(setupCanvas('dctRowBasis', 1240, 850));
+    refreshRowReadout();
+  }
+
+  function rowUseButtons(used) {
+    let html = '<button data-use="0" class="' + (used === 0 ? 'on' : '') + '">清空</button>';
+    for (let k = 0; k < 8; k++) {
+      html += '<button data-use="' + (k + 1) + '" class="' + (used === k + 1 ? 'on' : '') + '">+X' + k + '</button>';
+    }
+    html += '<button data-step="-1" title="少用一个余弦波">◀ 上一步</button>' +
+      '<button data-step="1" title="多加一个余弦波">下一步 ▶</button>';
+    return html;
+  }
+
+  /* 手动步进：点 "+Xk" 就从当前项继续累加，点"清空"回到一条直线 */
+  function applyRowUse(use) {
+    stopVisualAnimations();
+    state.dctUseCount = clamp(use, 0, 8);
+    const target = setupCanvas('dctRowBasis', 1240, 850);
+    if (target) drawRowBasis(target);
+    syncUseButtons(state.dctUseCount);
+    refreshRowReadout();
+    refreshStepParams();
+  }
+
+  function syncUseButtons(used) {
+    Array.prototype.forEach.call(stage.querySelectorAll('.dct-use-row button'), function (button) {
+      const value = button.getAttribute('data-use');
+      if (value === null) return;
+      button.classList.toggle('on', Number(value) === used);
+    });
+  }
+
+  function dctRowValues(row) {
+    const block = encodedBlock();
+    const temporary = rowDct(block.pixels);
+    const pixels = new Float64Array(8);
+    const coefficients = new Float64Array(8);
+    for (let k = 0; k < 8; k++) {
+      pixels[k] = block.pixels[row * 8 + k] + 128;
+      coefficients[k] = temporary[row * 8 + k];
+    }
+    return { pixels: pixels, coefficients: coefficients };
+  }
+
+  function cosineBasis(frequency, x) {
+    const alpha = frequency === 0 ? 1 / Math.sqrt(8) : 0.5;
+    return alpha * Math.cos(Math.PI * frequency * (2 * x + 1) / 16);
+  }
+
+  function bestRowOfBlock() {
+    const block = encodedBlock();
+    let best = 0;
+    let bestScore = -1;
+    for (let y = 0; y < 8; y++) {
+      let sum = 0;
+      let squares = 0;
+      for (let x = 0; x < 8; x++) {
+        const value = block.pixels[y * 8 + x];
+        sum += value;
+        squares += value * value;
+      }
+      const mean = sum / 8;
+      const variance = squares / 8 - mean * mean;
+      if (variance > bestScore) {
+        bestScore = variance;
+        best = y;
+      }
+    }
+    return best;
+  }
+
+  function refreshRowReadout() {
+    const readout = document.getElementById('dctRowReadout');
+    if (!readout) return;
+    const data = dctRowValues(state.dctRow);
+    let energy = 0;
+    let original = 0;
+    for (let k = 0; k < 8; k++) {
+      energy += data.coefficients[k] * data.coefficients[k];
+      original += (data.pixels[k] - 128) * (data.pixels[k] - 128);
+    }
+    const used = state.basis && state.basis.active
+      ? state.basis.step
+      : clamp(typeof state.dctUseCount === 'number' ? state.dctUseCount : 8, 0, 8);
+    let error = 0;
+    for (let k = 0; k < 8; k++) {
+      let sum = 0;
+      for (let i = 0; i < used; i++) sum += data.coefficients[i] * cosineBasis(i, k);
+      error = Math.max(error, Math.abs(sum + 128 - data.pixels[k]));
+    }
+    readout.textContent = '第 ' + (state.dctRow + 1) + ' 行：X(0) = ' + formatValue(data.coefficients[0]) +
+      '（直流 = 这行像素减 128 后的平均值，为负说明整行偏暗），X(1)–X(7) 是横向频率；系数平方和 ' +
+      formatValue(energy) + ' = 像素减 128 后的平方和 ' + formatValue(original) + '（帕塞瓦尔定理）。' +
+      '当前只保留 ' + used + ' 个波（' + (used === 0 ? '一条水平直线' : used === 1 ? '只有 DC 项 X0' : 'X0…X' + (used - 1)) + '），最大残差 ' +
+      (used >= 8 ? '0.0' : error.toFixed(1)) + '；8 个全用上才能逐点重合。';
+  }
+
+  function drawRowWave(target) {
+    const context = target.ctx;
+    const data = dctRowValues(state.dctRow);
+    context.clearRect(0, 0, target.w, target.h);
+
+    const leftX = 22;
+    const leftWidth = 352;
+    const plotTop = 124;
+    const plotBottom = 262;
+    const rightX = 470;
+    const rightWidth = target.w - rightX - 26;
+
+    context.fillStyle = '#334155';
+    context.font = '600 12px "Microsoft YaHei", sans-serif';
+    context.textAlign = 'left';
+    context.textBaseline = 'alphabetic';
+    context.fillText('空间域：一行 8 个像素 x(0)–x(7)', leftX, 22);
+
+    const slot = leftWidth / 8;
+    for (let index = 0; index < 8; index++) {
+      const center = leftX + (index + 0.5) * slot;
+      const swatch = slot - 8;
+      const rgb = grayColor(data.pixels[index]);
+      context.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+      context.fillRect(center - swatch / 2, 36, swatch, 46);
+      context.strokeStyle = 'rgba(21,32,51,0.25)';
+      context.lineWidth = 1;
+      context.strokeRect(center - swatch / 2 + 0.5, 36.5, swatch - 1, 45);
+      context.fillStyle = textColor(rgb);
+      context.font = '600 11px Consolas, monospace';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(String(Math.round(data.pixels[index])), center, 59);
+    }
+
+    const yOf = function (value) { return plotBottom - (value / 255) * (plotBottom - plotTop); };
+    context.strokeStyle = 'rgba(148,163,184,0.6)';
+    context.lineWidth = 1;
+    context.setLineDash([4, 4]);
+    context.beginPath();
+    context.moveTo(leftX, plotTop); context.lineTo(leftX + leftWidth, plotTop);
+    context.moveTo(leftX, plotBottom); context.lineTo(leftX + leftWidth, plotBottom);
+    context.stroke();
+    context.setLineDash([]);
+    context.fillStyle = '#94a3b8';
+    context.font = '10.5px Consolas, monospace';
+    context.textAlign = 'left';
+    context.textBaseline = 'bottom';
+    context.fillText('255', leftX, plotTop - 4);
+    context.textBaseline = 'top';
+    context.fillText('0', leftX, plotBottom + 4);
+
+    context.strokeStyle = '#1d4ed8';
+    context.lineWidth = 2.4;
+    context.beginPath();
+    for (let index = 0; index < 8; index++) {
+      const center = leftX + (index + 0.5) * slot;
+      const y = yOf(data.pixels[index]);
+      if (index === 0) context.moveTo(center, y);
+      else context.lineTo(center, y);
+    }
+    context.stroke();
+    for (let index = 0; index < 8; index++) {
+      const center = leftX + (index + 0.5) * slot;
+      context.beginPath();
+      context.arc(center, yOf(data.pixels[index]), 3.8, 0, Math.PI * 2);
+      context.fillStyle = '#fff';
+      context.fill();
+      context.strokeStyle = '#1d4ed8';
+      context.lineWidth = 2;
+      context.stroke();
+    }
+
+    const arrowY = (plotTop + plotBottom) / 2;
+    const arrowStart = leftX + leftWidth + 16;
+    const arrowEnd = rightX - 26;
+    context.strokeStyle = '#64748b';
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(arrowStart, arrowY);
+    context.lineTo(arrowEnd, arrowY);
+    context.stroke();
+    context.beginPath();
+    context.moveTo(arrowEnd, arrowY);
+    context.lineTo(arrowEnd - 9, arrowY - 5.5);
+    context.lineTo(arrowEnd - 9, arrowY + 5.5);
+    context.closePath();
+    context.fillStyle = '#64748b';
+    context.fill();
+    context.fillStyle = '#475569';
+    context.font = '600 11.5px "Microsoft YaHei", sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'bottom';
+    context.fillText('一维 DCT', (arrowStart + arrowEnd) / 2, arrowY - 7);
+
+    context.fillStyle = '#334155';
+    context.font = '600 12px "Microsoft YaHei", sans-serif';
+    context.textAlign = 'left';
+    context.textBaseline = 'alphabetic';
+    context.fillText('频率域：8 个系数 X(0)–X(7)', rightX, 22);
+
+    const maximum = Math.max(1, Math.max.apply(null, Array.from(data.coefficients).map(Math.abs)));
+    const baseline = (plotTop + plotBottom) / 2;
+    const halfHeight = (plotBottom - plotTop) / 2 - 20;
+    context.strokeStyle = 'rgba(148,163,184,0.85)';
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(rightX, baseline);
+    context.lineTo(rightX + rightWidth, baseline);
+    context.stroke();
+    context.fillStyle = '#94a3b8';
+    context.font = '10.5px Consolas, monospace';
+    context.textAlign = 'right';
+    context.textBaseline = 'bottom';
+    context.fillText(formatValue(maximum), rightX + rightWidth, baseline - 3);
+    context.textBaseline = 'top';
+    context.fillText('−' + formatValue(maximum), rightX + rightWidth, baseline + 3);
+
+    const barSlot = rightWidth / 8;
+    for (let k = 0; k < 8; k++) {
+      const center = rightX + (k + 0.5) * barSlot;
+      const value = data.coefficients[k];
+      const height = Math.abs(value) / maximum * halfHeight;
+      const width = barSlot * 0.5;
+      context.fillStyle = value >= 0 ? 'rgba(29,78,216,0.82)' : 'rgba(194,65,12,0.82)';
+      context.fillRect(center - width / 2, value >= 0 ? baseline - height : baseline, width, Math.max(1.5, height));
+      context.fillStyle = '#334155';
+      context.font = '600 10.5px Consolas, monospace';
+      context.textAlign = 'center';
+      if (value >= 0) {
+        context.textBaseline = 'bottom';
+        context.fillText(formatValue(value), center, baseline - height - 4);
+      } else {
+        context.textBaseline = 'top';
+        context.fillText(formatValue(value), center, baseline + height + 4);
+      }
+      context.fillStyle = '#64748b';
+      context.textBaseline = 'top';
+      context.fillText('X' + k, center, plotBottom + 6);
+    }
+  }
+
+  function drawRowBasis(target) {
+    const context = target.ctx;
+    const data = dctRowValues(state.dctRow);
+    const used = state.basis && state.basis.active
+      ? state.basis.step
+      : clamp(typeof state.dctUseCount === 'number' ? state.dctUseCount : 8, 0, 8);
+    context.clearRect(0, 0, target.w, target.h);
+    drawRowCards(context, data, used, target.w);
+    drawRowSumCard(context, data, used, { x: 10, y: 372, w: 610, h: 466 });
+    drawRowNextCard(context, data, used, { x: 636, y: 372, w: 594, h: 466 });
+  }
+
+  /* 上排：8 个余弦波 × 各自权重 */
+  function drawRowCards(context, data, used, width) {
+    const maximum = Math.max(1, Math.max.apply(null, Array.from(data.coefficients).map(Math.abs)));
+    const gridX = 10;
+    const gridY = 8;
+    const cellWidth = (width - 20) / 4;
+    const cellHeight = 170;
+    for (let k = 0; k < 8; k++) {
+      const column = k % 4;
+      const row = Math.floor(k / 4);
+      const x0 = gridX + column * cellWidth;
+      const y0 = gridY + row * cellHeight;
+      const innerX = x0 + 8;
+      const innerWidth = cellWidth - 16;
+      const axisY = y0 + cellHeight * 0.56;
+      const weight = Math.abs(data.coefficients[k]) / maximum;
+      const amplitude = cellHeight * 0.32 * Math.pow(weight, 0.5);
+      const peak = k === 0 ? 1 / Math.sqrt(8) : 0.5;
+      const shape = function (position) { return cosineBasis(k, position) / peak; };
+
+      const isUsed = k < used;
+      const isCurrent = used > 0 && k === used - 1;
+
+      context.fillStyle = isUsed ? 'rgba(29,78,216,0.09)' : 'rgba(148,163,184,0.05)';
+      context.fillRect(x0 + 2, y0 + 2, cellWidth - 4, cellHeight - 6);
+      context.strokeStyle = isCurrent ? '#c2410c' : (isUsed ? 'rgba(29,78,216,0.45)' : 'rgba(148,163,184,0.5)');
+      context.lineWidth = isCurrent ? 2 : 1;
+      context.strokeRect(x0 + 2.5, y0 + 2.5, cellWidth - 5, cellHeight - 7);
+
+      context.fillStyle = isUsed ? '#334155' : '#94a3b8';
+      context.font = '600 11px Consolas, monospace';
+      context.textAlign = 'left';
+      context.textBaseline = 'top';
+      context.fillText('X' + k + ' = ' + formatValue(data.coefficients[k]), innerX, y0 + 8);
+      context.fillStyle = isCurrent ? '#c2410c' : '#94a3b8';
+      context.font = '9.5px Consolas, monospace';
+      context.textAlign = 'right';
+      context.fillText(isCurrent ? '刚加入' : (isUsed ? '已加入' : '未加入'), innerX + innerWidth, y0 + 9);
+
+      context.strokeStyle = 'rgba(148,163,184,0.7)';
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(innerX, axisY);
+      context.lineTo(innerX + innerWidth, axisY);
+      context.stroke();
+
+      const baseColor = data.coefficients[k] >= 0 ? '#1d4ed8' : '#c2410c';
+      const color = isUsed ? baseColor : 'rgba(148,163,184,0.6)';
+      context.strokeStyle = color;
+      context.lineWidth = 1.8;
+      context.beginPath();
+      for (let step = 0; step <= 64; step++) {
+        const position = step / 64 * 8 - 0.5;
+        const x = innerX + step / 64 * innerWidth;
+        const y = axisY - shape(position) * amplitude;
+        if (step === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      }
+      context.stroke();
+      for (let i = 0; i < 8; i++) {
+        const center = innerX + (i + 0.5) / 8 * innerWidth;
+        const y = axisY - shape(i) * amplitude;
+        context.strokeStyle = color;
+        context.lineWidth = 1.1;
+        context.beginPath();
+        context.moveTo(center, axisY);
+        context.lineTo(center, y);
+        context.stroke();
+        context.beginPath();
+        context.arc(center, y, 2.3, 0, Math.PI * 2);
+        context.fillStyle = color;
+        context.fill();
+      }
+
+      context.fillStyle = 'rgba(148,163,184,0.3)';
+      context.fillRect(innerX, y0 + cellHeight - 18, innerWidth, 4);
+      context.fillStyle = color;
+      context.fillRect(innerX, y0 + cellHeight - 18, innerWidth * weight, 4);
+    }
+
+    context.fillStyle = '#94a3b8';
+    context.font = '9.5px "Microsoft YaHei", sans-serif';
+    context.textAlign = 'left';
+    context.textBaseline = 'top';
+    context.fillText('灰 = 还没加入；橙框 = 刚加入；下方细条 = 该系数在 8 项中的真实占比', gridX, gridY + cellHeight * 2 + 4);
+  }
+
+  /* 下排左：逐项叠加的逼近过程 */
+  function drawRowSumCard(context, data, used, box) {
+    const cardX = box.x;
+    const cardY = box.y;
+    const cardWidth = box.w;
+    const cardHeight = box.h;
+    const plotLeft = cardX + 46;
+    const plotRight = cardX + cardWidth - 16;
+    const plotTop = cardY + 58;
+    const plotBottom = cardY + cardHeight - 46;
+    const yOf = function (value) { return plotBottom - (value / 255) * (plotBottom - plotTop); };
+
+    context.fillStyle = '#fff';
+    context.fillRect(cardX, cardY, cardWidth, cardHeight);
+    context.strokeStyle = '#e3eaf4';
+    context.lineWidth = 1;
+    context.strokeRect(cardX + 0.5, cardY + 0.5, cardWidth - 1, cardHeight - 1);
+
+    context.fillStyle = '#334155';
+    context.font = '600 12px "Microsoft YaHei", sans-serif';
+    context.textAlign = 'left';
+    context.textBaseline = 'alphabetic';
+    context.fillText('叠加过程', cardX + 14, cardY + 22);
+
+    let error = 0;
+    for (let k = 0; k < 8; k++) {
+      let sum = 0;
+      for (let i = 0; i < Math.min(used, 8); i++) sum += data.coefficients[i] * cosineBasis(i, k);
+      error = Math.max(error, Math.abs(sum + 128 - data.pixels[k]));
+    }
+    context.fillStyle = '#64748b';
+    context.font = '11px Consolas, monospace';
+    context.fillText('已用 ' + used + ' / 8 个余弦波', cardX + 14, cardY + 39);
+    context.textAlign = 'right';
+    context.fillText(used >= 8 ? '残差 0.0' : '残差 ' + error.toFixed(1), cardX + cardWidth - 16, cardY + 39);
+
+    const slot = (plotRight - plotLeft) / 8;
+    const levels = [0, 64, 128, 192, 255];
+    context.lineWidth = 1;
+    context.font = '9.5px Consolas, monospace';
+    for (let i = 0; i < levels.length; i++) {
+      const level = levels[i];
+      const y = yOf(level);
+      context.strokeStyle = level === 128 ? 'rgba(29,78,216,0.3)' : 'rgba(148,163,184,0.28)';
+      context.setLineDash(level === 128 ? [] : [3, 4]);
+      context.beginPath();
+      context.moveTo(plotLeft, y);
+      context.lineTo(plotRight, y);
+      context.stroke();
+      context.setLineDash([]);
+      context.fillStyle = level === 128 ? 'rgba(29,78,216,0.8)' : '#94a3b8';
+      context.textAlign = 'right';
+      context.textBaseline = 'middle';
+      context.fillText(String(level), plotLeft - 6, y);
+    }
+    context.strokeStyle = 'rgba(100,116,139,0.6)';
+    context.lineWidth = 1.2;
+    context.beginPath();
+    context.moveTo(plotLeft, plotTop);
+    context.lineTo(plotLeft, plotBottom);
+    context.moveTo(plotLeft, plotBottom);
+    context.lineTo(plotRight, plotBottom);
+    context.stroke();
+    context.textAlign = 'center';
+    context.font = '9.5px Consolas, monospace';
+    for (let k = 0; k < 8; k++) {
+      context.fillText(String(k), plotLeft + (k + 0.5) * slot, plotBottom + 3);
+    }
+
+    const current = new Float64Array(8);
+    for (let k = 0; k < 8; k++) {
+      let sum = 0;
+      for (let i = 0; i < Math.min(used, 8); i++) sum += data.coefficients[i] * cosineBasis(i, k);
+      current[k] = sum + 128;
+    }
+    const targetY = function (k) { return yOf(clamp(data.pixels[k], 0, 255)); };
+    const currentY = function (k) { return yOf(clamp(current[k], 0, 255)); };
+
+    /* 原行目标值：虚线折线 */
+    context.strokeStyle = 'rgba(100,116,139,0.7)';
+    context.lineWidth = 1.4;
+    context.setLineDash([5, 4]);
+    context.beginPath();
+    for (let k = 0; k < 8; k++) {
+      const center = plotLeft + (k + 0.5) * slot;
+      if (k === 0) context.moveTo(center, targetY(k));
+      else context.lineTo(center, targetY(k));
+    }
+    context.stroke();
+    context.setLineDash([]);
+
+    /* 每个位置一条橙色残差线：目标点 ↔ 当前叠加值 */
+    context.strokeStyle = 'rgba(194,65,12,0.5)';
+    context.lineWidth = 1.3;
+    for (let k = 0; k < 8; k++) {
+      const center = plotLeft + (k + 0.5) * slot;
+      if (Math.abs(currentY(k) - targetY(k)) < 0.8) continue;
+      context.beginPath();
+      context.moveTo(center, targetY(k));
+      context.lineTo(center, currentY(k));
+      context.stroke();
+    }
+
+    /* 当前叠加曲线 */
+    context.strokeStyle = used >= 8 ? '#15803d' : '#1d4ed8';
+    context.lineWidth = 2.6;
+    context.beginPath();
+    const samples = 96;
+    for (let step = 0; step <= samples; step++) {
+      const position = step / samples * 8 - 0.5;
+      let sum = 0;
+      for (let k = 0; k < Math.min(used, 8); k++) sum += data.coefficients[k] * cosineBasis(k, position);
+      const x = plotLeft + step / samples * (plotRight - plotLeft);
+      const y = yOf(clamp(sum + 128, 0, 255));
+      if (step === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    }
+    context.stroke();
+
+    /* 空心点 = 原行 8 个预期值（叠加的目标） */
+    for (let k = 0; k < 8; k++) {
+      const center = plotLeft + (k + 0.5) * slot;
+      context.beginPath();
+      context.arc(center, targetY(k), 4, 0, Math.PI * 2);
+      context.fillStyle = '#fff';
+      context.fill();
+      context.strokeStyle = '#475569';
+      context.lineWidth = 1.6;
+      context.stroke();
+    }
+
+    /* 实心点 = 当前叠加值 */
+    for (let k = 0; k < 8; k++) {
+      const center = plotLeft + (k + 0.5) * slot;
+      context.beginPath();
+      context.arc(center, currentY(k), 2.8, 0, Math.PI * 2);
+      context.fillStyle = used >= 8 ? '#15803d' : '#1d4ed8';
+      context.fill();
+    }
+
+    /* 残差最大的位置标出 Δ 数值 */
+    if (used < 8) {
+      let worst = 0;
+      for (let k = 1; k < 8; k++) {
+        if (Math.abs(current[k] - data.pixels[k]) > Math.abs(current[worst] - data.pixels[worst])) worst = k;
+      }
+      const gap = Math.abs(current[worst] - data.pixels[worst]);
+      if (gap >= 1.5) {
+        const center = plotLeft + (worst + 0.5) * slot;
+        const midY = (targetY(worst) + currentY(worst)) / 2;
+        const toLeft = center > plotRight - 34;
+        context.fillStyle = '#c2410c';
+        context.font = '600 9.5px Consolas, monospace';
+        context.textAlign = toLeft ? 'right' : 'left';
+        context.textBaseline = 'middle';
+        context.fillText('Δ' + gap.toFixed(0), toLeft ? center - 7 : center + 7, midY);
+      }
+    }
+
+    context.fillStyle = '#94a3b8';
+    context.font = '9.5px Consolas, monospace';
+    context.textAlign = 'left';
+    context.textBaseline = 'top';
+    context.fillText('○ 原行预期点  ● 当前叠加值  橙线 = 残差', cardX + 14, plotBottom + 24);
+  }
+
+  /* 下排右：下一次要加入的那一项 X(k)·C_k */
+  function drawRowNextCard(context, data, used, box) {
+    context.fillStyle = '#fff';
+    context.fillRect(box.x, box.y, box.w, box.h);
+    context.strokeStyle = '#e3eaf4';
+    context.lineWidth = 1;
+    context.strokeRect(box.x + 0.5, box.y + 0.5, box.w - 1, box.h - 1);
+
+    const done = used >= 8;
+    const k = Math.min(used, 7);
+    const weight = done ? 0 : data.coefficients[k];
+
+    context.fillStyle = '#334155';
+    context.font = '600 12px "Microsoft YaHei", sans-serif';
+    context.textAlign = 'left';
+    context.textBaseline = 'alphabetic';
+    context.fillText(done ? '没有下一项了' : '下一次要加入：X' + k + ' × C' + k, box.x + 14, box.y + 22);
+    context.fillStyle = '#64748b';
+    context.font = '11px "Microsoft YaHei", sans-serif';
+    context.fillText(done ? '8 个波已全部加入，曲线与原行重合'
+      : '系数 ' + formatValue(weight) + ' 乘上余弦波 C' + k + '，下面就是它加进曲线的形状',
+      box.x + 14, box.y + 39);
+
+    const left = box.x + 56;
+    const right = box.x + box.w - 22;
+    const top = box.y + 64;
+    const bottom = box.y + box.h - 54;
+    const mid = (top + bottom) / 2;
+    const unit = (bottom - top) / 2 / 128;
+    const yOfValue = function (value) { return mid - value * unit; };
+
+    context.font = '9.5px Consolas, monospace';
+    const gridLevels = [128, 64, 0, -64, -128];
+    for (let i = 0; i < gridLevels.length; i++) {
+      const level = gridLevels[i];
+      const y = yOfValue(level);
+      context.strokeStyle = level === 0 ? 'rgba(100,116,139,0.7)' : 'rgba(148,163,184,0.26)';
+      context.setLineDash(level === 0 ? [] : [3, 4]);
+      context.beginPath();
+      context.moveTo(left, y);
+      context.lineTo(right, y);
+      context.stroke();
+      context.setLineDash([]);
+      context.fillStyle = level === 0 ? '#64748b' : '#94a3b8';
+      context.textAlign = 'right';
+      context.textBaseline = 'middle';
+      context.fillText(String(level), left - 6, y);
+    }
+
+    const plotW = right - left;
+    const slot = plotW / 8;
+    context.textAlign = 'center';
+    context.textBaseline = 'top';
+    context.fillStyle = '#94a3b8';
+    for (let i = 0; i < 8; i++) context.fillText(String(i), left + (i + 0.5) * slot, bottom + 4);
+
+    if (done) {
+      context.fillStyle = '#15803d';
+      context.font = '600 11px "Microsoft YaHei", sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText('8 / 8 已完成，没有下一项', (left + right) / 2, mid);
+      return;
+    }
+
+    const color = weight >= 0 ? '#1d4ed8' : '#c2410c';
+    context.strokeStyle = color;
+    context.lineWidth = 2.2;
+    context.beginPath();
+    for (let step = 0; step <= 96; step++) {
+      const position = step / 96 * 8 - 0.5;
+      const x = left + step / 96 * plotW;
+      const y = yOfValue(weight * cosineBasis(k, position));
+      if (step === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    }
+    context.stroke();
+
+    for (let i = 0; i < 8; i++) {
+      const center = left + (i + 0.5) * slot;
+      const value = weight * cosineBasis(k, i);
+      context.strokeStyle = color;
+      context.lineWidth = 1.2;
+      context.beginPath();
+      context.moveTo(center, yOfValue(0));
+      context.lineTo(center, yOfValue(value));
+      context.stroke();
+      context.beginPath();
+      context.arc(center, yOfValue(value), 2.6, 0, Math.PI * 2);
+      context.fillStyle = color;
+      context.fill();
+    }
+
+    const amplitude = Math.abs(weight) * (k === 0 ? 1 / Math.sqrt(8) : 0.5);
+    context.fillStyle = '#64748b';
+    context.font = '9.5px "Microsoft YaHei", sans-serif';
+    context.textAlign = 'left';
+    context.textBaseline = 'top';
+    context.fillText('纵轴 = 这一项对像素的加减量（±128）；' +
+      (amplitude < 1 ? '这一项很小，加入后几乎看不出变化'
+        : weight >= 0 ? '正系数：波峰处加亮、波谷处压暗' : '负系数：相位相反，波峰处反而压暗'),
+      box.x + 14, bottom + 24);
   }
 
   function rowDct(block) {
@@ -1564,19 +2849,20 @@
     const block = encodedBlock();
     stage.innerHTML = '<div class="grid-3">' +
       figure('passOriginal', '原块 f(x,y)（已 −128）') +
-      figure('passTemp', '第 1 次：逐行 1D DCT（行=y，列=u）') +
-      figure('passFinal', '第 2 次：逐列 1D DCT（行=u，列=v）') +
-      '</div><p class="note" id="passReadout"></p>' +
-      '<button class="stage-btn" id="passBack">返回系数视图</button>';
+      figure('passTemp', '第 1 次：对每行做 1D DCT（行=y，列=u）') +
+      figure('passFinal', '第 2 次：对每列做 1D DCT（行=u，列=v）') +
+      '</div>' +
+      figure('passRow', '当前这一行/列：就是上面讲的一维 DCT 在逐行、逐列重复') +
+      '<p class="note" id="passReadout"></p>' +
+      '<button class="stage-btn" id="passBack">下一张：看这 64 个系数代表什么 →</button>';
     document.getElementById('passBack').addEventListener('click', function () {
       if (state.dctPassTimer) {
         clearInterval(state.dctPassTimer);
         state.dctPassTimer = null;
       }
-      state.dctView = 'coeff';
       state.dctRowStep = 8;
       state.dctColStep = 8;
-      renderDctStep();
+      gotoChapter('dct:3');
     });
     drawCells(setupCanvas('passOriginal', 380, 380), block.pixels, function (value) {
       return grayColor(value + 128);
@@ -1586,6 +2872,7 @@
     });
     setupCanvas('passTemp', 380, 380);
     setupCanvas('passFinal', 380, 380);
+    setupCanvas('passRow', 760, 200);
     refreshDctTwoPass();
   }
 
@@ -1635,17 +2922,91 @@
     const temporary = rowDct(block.pixels);
     const finalCanvas = document.getElementById('passFinal');
     const tempCanvas = document.getElementById('passTemp');
+    const rowCanvas = document.getElementById('passRow');
     if (!finalCanvas || !tempCanvas) return;
     drawPassMatrix({ canvas: tempCanvas, ctx: tempCanvas.getContext('2d'), w: 380, h: 380 }, temporary, state.dctRowStep, 'row');
     drawPassMatrix({ canvas: finalCanvas, ctx: finalCanvas.getContext('2d'), w: 380, h: 380 }, block.coefficients, state.dctColStep, 'col');
+    const axis = state.dctRowStep < 8 ? 'row' : 'col';
+    const index = clamp((axis === 'row' ? state.dctRowStep : state.dctColStep) - 1, 0, 7);
+    if (rowCanvas) {
+      drawPassRow({ canvas: rowCanvas, ctx: rowCanvas.getContext('2d'), w: 760, h: 200 }, axis, index);
+    }
     const readout = document.getElementById('passReadout');
     if (!readout) return;
     if (state.dctRowStep < 8) {
-      readout.textContent = '第 1 次：逐行做 1D DCT，已处理 ' + state.dctRowStep + '/8 行。';
+      readout.textContent = '第 1 次：逐行做 1D DCT，已处理 ' + state.dctRowStep + '/8 行；下方画的就是第 ' + (index + 1) + ' 行这一维变换。';
     } else if (state.dctColStep < 8) {
-      readout.textContent = '第 2 次：逐列做 1D DCT，已处理 ' + state.dctColStep + '/8 列。';
+      readout.textContent = '第 2 次：逐列做 1D DCT，已处理 ' + state.dctColStep + '/8 列；这次把同一套余弦基换到纵向。';
     } else {
-      readout.textContent = '完成：F = T · f · Tᵀ，二维 DCT 分解为两次一维 DCT。';
+      readout.textContent = '完成：F = T · f · Tᵀ，二维 DCT 就是先把每行做一维 DCT，再把每列做一次一维 DCT。';
+    }
+  }
+
+  function drawPassRow(target, axis, index) {
+    const context = target.ctx;
+    const block = encodedBlock();
+    const temporary = rowDct(block.pixels);
+    const input = new Float64Array(8);
+    const output = new Float64Array(8);
+    for (let i = 0; i < 8; i++) {
+      if (axis === 'row') {
+        input[i] = block.pixels[index * 8 + i] + 128;
+        output[i] = temporary[index * 8 + i];
+      } else {
+        input[i] = temporary[i * 8 + index];
+        output[i] = block.coefficients[i * 8 + index];
+      }
+    }
+    context.clearRect(0, 0, target.w, target.h);
+    const halfWidth = (target.w - 36) / 2;
+    drawStemStrip(context, { x: 10, y: 6, w: halfWidth, h: target.h - 12 },
+      axis === 'row' ? '第 ' + (index + 1) + ' 行的 8 个像素（0–255）' : '第 ' + (index + 1) + ' 列的 8 个中间系数',
+      input, axis !== 'row');
+    drawStemStrip(context, { x: 26 + halfWidth, y: 6, w: halfWidth, h: target.h - 12 },
+      axis === 'row' ? '→ 这一行的一维 DCT 结果' : '→ 这一列的一维 DCT 结果（最终系数）',
+      output, true);
+  }
+
+  function drawStemStrip(context, box, title, values, signed) {
+    context.fillStyle = '#fff';
+    context.fillRect(box.x, box.y, box.w, box.h);
+    context.strokeStyle = '#e3eaf4';
+    context.lineWidth = 1;
+    context.strokeRect(box.x + 0.5, box.y + 0.5, box.w - 1, box.h - 1);
+    context.fillStyle = '#64748b';
+    context.font = '600 11px "Microsoft YaHei", sans-serif';
+    context.textAlign = 'left';
+    context.textBaseline = 'top';
+    context.fillText(title, box.x + 10, box.y + 8);
+
+    let maximum = 1;
+    for (let i = 0; i < values.length; i++) maximum = Math.max(maximum, Math.abs(values[i]));
+    const plotTop = box.y + 30;
+    const plotBottom = box.y + box.h - 22;
+    const baseline = signed ? (plotTop + plotBottom) / 2 : plotBottom;
+    const half = signed ? (plotBottom - plotTop) / 2 - 8 : (plotBottom - plotTop) - 8;
+    const slot = (box.w - 28) / values.length;
+    context.strokeStyle = 'rgba(148,163,184,0.8)';
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(box.x + 14, baseline);
+    context.lineTo(box.x + box.w - 14, baseline);
+    context.stroke();
+    for (let i = 0; i < values.length; i++) {
+      const center = box.x + 14 + (i + 0.5) * slot;
+      const height = Math.abs(values[i]) / maximum * half;
+      const width = slot * 0.5;
+      context.fillStyle = values[i] >= 0 ? 'rgba(29,78,216,0.82)' : 'rgba(194,65,12,0.82)';
+      context.fillRect(center - width / 2, values[i] >= 0 ? baseline - height : baseline, width, Math.max(1.5, height));
+      context.fillStyle = '#334155';
+      context.font = '600 10px Consolas, monospace';
+      context.textAlign = 'center';
+      context.textBaseline = values[i] >= 0 ? 'bottom' : 'top';
+      context.fillText(formatValue(values[i]), center,
+        values[i] >= 0 ? baseline - height - 4 : baseline + height + 4);
+      context.fillStyle = '#94a3b8';
+      context.textBaseline = 'top';
+      context.fillText(String(i), center, plotBottom + 6);
     }
   }
 
@@ -2399,7 +3760,7 @@
     const cbLow = halfScale(planes.cb, width, height, true, 2, true).plane;
     const crLow = halfScale(planes.cr, width, height, true, 2, true).plane;
     const yLow = halfScale(planes.y, width, height, true, 2, true).plane;
-    const detail = chooseDetailRegion(state.rgb, width, height, 160, 120);
+    const detail = chooseDetailRegion(state.rgb, width, height, 80, 60);
     const grayHalf = halfScale(planes.y, width, height, false);
     const onlyHigh = frequencyFiltered(grayHalf.plane, grayHalf.width, grayHalf.height, false, 10);
     for (let i = 0; i < onlyHigh.length; i++) onlyHigh[i] += 128;
@@ -2420,46 +3781,255 @@
     return visualCache;
   }
 
+  /* 原理 01：照视频的讲法——一张图分两路，先问再揭晓，最后落到“压缩颜色信息”。 */
   function renderVisualLumaStep() {
     const data = buildVisualData();
-    stage.innerHTML = '<div class="grid-2">' +
-      figure('hvsLumaOrig', '原图 RGB') +
-      figure('hvsLumaY', '亮度 Y：轮廓和细节都在这里') +
-      figure('hvsLumaCb', '色度 Cb：大片平缓的颜色') +
-      figure('hvsLumaCr', '色度 Cr：大片平缓的颜色') +
+    stage.innerHTML =
+      '<div class="hvs-block"><div class="hvs-head">① 亮度 / 颜色感知<span>上面是原图，下面是调节亮度、调节饱和度后的两张结果——哪张区别更大？</span></div>' +
+      '<div class="hvs-source-row">' + figure('hvsLumaOrig', '① 原图（你的照片：亮度 + 颜色）') + '</div>' +
+      '<div class="grid-2">' +
+      figure('hvsLumaY', '') +
+      figure('hvsLumaColor', '') +
+      '</div>' +
+      '<div class="hvs-sliders">' +
+      '<div class="hvs-blind-group"><label>调节亮度 <input type="range" id="hvsBright" min="40" max="160" value="100"><output id="hvsBrightValue" class="hvs-blind">?</output></label><button class="stage-btn" id="hvsBrightReveal">我看出变化了</button></div>' +
+      '<div class="hvs-blind-group"><label>调节饱和度 <input type="range" id="hvsSat" min="0" max="200" value="100"><output id="hvsSatValue" class="hvs-blind">?</output></label><button class="stage-btn" id="hvsSatReveal">我看出变化了</button></div>' +
+      '<button class="stage-btn" id="hvsReset">重新开始</button>' +
+      '</div>' +
+      '<div class="hvs-conclusion">人眼靠亮度认东西 → JPEG 第一步：把 RGB 换成 Y + Cb/Cr，然后压缩颜色信息</div>' +
       '</div>';
-    drawRGBInto(setupCanvas('hvsLumaOrig', 320, 240), data.original, state.width, state.height);
-    drawPlaneInto(setupCanvas('hvsLumaY', 320, 240), data.planes.y, state.width, state.height);
-    drawPlaneInto(setupCanvas('hvsLumaCb', 320, 240), data.planes.cb, state.width, state.height, 'cb');
-    drawPlaneInto(setupCanvas('hvsLumaCr', 320, 240), data.planes.cr, state.width, state.height, 'cr');
+    drawRGBInto(setupCanvas('hvsLumaOrig', 520, 340), data.original, state.width, state.height);
+    drawRGBInto(setupCanvas('hvsLumaY', 400, 260), data.original, state.width, state.height);
+    drawRGBInto(setupCanvas('hvsLumaColor', 400, 260), data.original, state.width, state.height);
+    const bright = document.getElementById('hvsBright');
+    const sat = document.getElementById('hvsSat');
+    const reset = document.getElementById('hvsReset');
+    const brightReveal = document.getElementById('hvsBrightReveal');
+    const satReveal = document.getElementById('hvsSatReveal');
+    const brightValue = document.getElementById('hvsBrightValue');
+    const satValue = document.getElementById('hvsSatValue');
+    const brightPicture = document.getElementById('hvsLumaY');
+    const satPicture = document.getElementById('hvsLumaColor');
+    if (bright && sat && reset && brightReveal && satReveal && brightValue && satValue && brightPicture && satPicture) {
+      const deltaText = function (value) {
+        const delta = Number(value) - 100;
+        if (delta === 0) return '±0%';
+        return (delta > 0 ? '+' : '−') + Math.abs(delta) + '%';
+      };
+      const applyFilters = function () {
+        brightPicture.style.filter = 'brightness(' + (Number(bright.value) / 100) + ')';
+        satPicture.style.filter = 'saturate(' + (Number(sat.value) / 100) + ')';
+      };
+      const hideValue = function (output, button) {
+        output.textContent = '?';
+        output.classList.add('hvs-blind');
+        button.textContent = '我看出变化了';
+      };
+      const revealValue = function (slider, output, button) {
+        output.textContent = deltaText(slider.value);
+        output.classList.remove('hvs-blind');
+        button.textContent = '已记录';
+      };
+      bright.addEventListener('input', function () {
+        applyFilters();
+        hideValue(brightValue, brightReveal);
+      });
+      sat.addEventListener('input', function () {
+        applyFilters();
+        hideValue(satValue, satReveal);
+      });
+      brightReveal.addEventListener('click', function () {
+        revealValue(bright, brightValue, brightReveal);
+      });
+      satReveal.addEventListener('click', function () {
+        revealValue(sat, satValue, satReveal);
+      });
+      reset.addEventListener('click', function () {
+        bright.value = 100;
+        sat.value = 100;
+        applyFilters();
+        hideValue(brightValue, brightReveal);
+        hideValue(satValue, satReveal);
+      });
+      applyFilters();
+    }
   }
 
+  /* 原理 02：照视频的讲法——先问再比，给出“四格取平均”的操作定义，最后收成 JPEG 第一步。 */
   function renderVisualLumaCompareStep() {
     const data = buildVisualData();
     stage.innerHTML =
-      '<div class="hvs-block"><div class="hvs-head">公平对比：同样 2×2 砍到 1/4，同样最近邻放大<span>自动挑纹理最丰富的一块</span></div>' +
+      '<div class="hvs-block"><div class="hvs-head">② 压缩颜色信息<span>亮度和色度都砍到 1/4，哪张先露出方块？</span></div>' +
       '<div class="grid-3">' +
-      figure('hvsOriginal', '原图') +
-      figure('hvsLowChroma', '色度砍到 1/4<br><span class="ok">几乎看不出</span>') +
-      figure('hvsLowLuma', '亮度砍到 1/4<br><span class="warn">马赛克明显</span>') +
-      '</div></div>';
-    drawRGBRegionInto(setupCanvas('hvsOriginal', 320, 240), data.original, state.width, state.height, 160, 120, data.regionX, data.regionY);
-    drawRGBRegionInto(setupCanvas('hvsLowChroma', 320, 240), data.lowChroma, state.width, state.height, 160, 120, data.regionX, data.regionY);
-    drawRGBRegionInto(setupCanvas('hvsLowLuma', 320, 240), data.lowLuma, state.width, state.height, 160, 120, data.regionX, data.regionY);
+      figure('hvsOriginal', '原图（你这张照片，放大 4 倍）') +
+      figure('hvsLowChroma', '色度 4 格并 1 格 <span class="warn">有损</span><br><span class="ok">几乎看不出</span>') +
+      figure('hvsLowLuma', '对照：亮度也 4 格并 1 格<br><span class="warn">立刻马赛克</span>') +
+      '</div>' +
+      figure('hvsMerge', '合并方法：取 4 格对应的 Cb、Cr 值求平均（数值取自你这张图的那一小块）') +
+      '<div class="hvs-conclusion">① 色彩空间转换 → ② 色度缩减采样（有损）= 压缩颜色信息，这就是 JPEG 的第一步</div>' +
+      '</div>';
+    drawRGBRegionInto(setupCanvas('hvsOriginal', 320, 240), data.original, state.width, state.height, 80, 60, data.regionX, data.regionY);
+    drawRGBRegionInto(setupCanvas('hvsLowChroma', 320, 240), data.lowChroma, state.width, state.height, 80, 60, data.regionX, data.regionY);
+    drawRGBRegionInto(setupCanvas('hvsLowLuma', 320, 240), data.lowLuma, state.width, state.height, 80, 60, data.regionX, data.regionY);
+    drawMergeCells(setupCanvas('hvsMerge', 760, 190), data);
   }
 
+  function drawMergeCells(target, data) {
+    const context = target.ctx;
+    const startX = clamp(data.regionX + 8, 0, state.width - 2);
+    const startY = clamp(data.regionY + 8, 0, state.height - 2);
+    const rows = [
+      { name: 'Cb', offset: [[0, 0], [1, 0], [0, 1], [1, 1]], fill: '#dcfce7', note: '蓝色差：偏黄 / 偏蓝' },
+      { name: 'Cr', offset: [[0, 0], [1, 0], [0, 1], [1, 1]], fill: '#ffe4e6', note: '红色差：偏青 / 偏红' }
+    ];
+    context.clearRect(0, 0, target.w, target.h);
+    rows.forEach(function (row, index) {
+      const plane = index === 0 ? data.planes.cb : data.planes.cr;
+      const top = 10 + index * 90;
+      const values = row.offset.map(function (pair) {
+        return plane[(startY + pair[1]) * state.width + startX + pair[0]];
+      });
+      const average = values.reduce(function (sum, value) { return sum + value; }, 0) / 4;
+      context.fillStyle = '#334155';
+      context.font = '600 12px "Microsoft YaHei", sans-serif';
+      context.textAlign = 'left';
+      context.textBaseline = 'alphabetic';
+      context.fillText(row.name, 8, top + 30);
+      values.forEach(function (value, cell) {
+        const x = 46 + (cell % 2) * 54;
+        const y = top + Math.floor(cell / 2) * 30;
+        context.fillStyle = row.fill;
+        context.fillRect(x, y, 50, 26);
+        context.strokeStyle = 'rgba(15,23,42,0.22)';
+        context.lineWidth = 1;
+        context.strokeRect(x + 0.5, y + 0.5, 49, 25);
+        context.fillStyle = '#0f172a';
+        context.font = '600 11px Consolas, monospace';
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.fillText(value.toFixed(0), x + 25, y + 13);
+      });
+      context.fillStyle = '#64748b';
+      context.font = '17px sans-serif';
+      context.textAlign = 'center';
+      context.fillText('→', 172, top + 31);
+      context.fillStyle = '#94a3b8';
+      context.font = '10.5px "Microsoft YaHei", sans-serif';
+      context.fillText('取平均', 172, top + 52);
+      context.fillStyle = row.fill;
+      context.fillRect(218, top + 13, 58, 54);
+      context.strokeStyle = 'rgba(15,23,42,0.35)';
+      context.lineWidth = 1.5;
+      context.strokeRect(218.5, top + 13.5, 57, 53);
+      context.fillStyle = '#0f172a';
+      context.font = '600 15px Consolas, monospace';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(average.toFixed(0), 247, top + 40);
+      context.fillStyle = '#64748b';
+      context.font = '11px "Microsoft YaHei", sans-serif';
+      context.textAlign = 'left';
+      context.fillText(row.note, 300, top + 40);
+    });
+  }
+
+  /* 原理 03：照视频的讲法——棋盘格设问 → 你的照片删高频 → 亮度曲线落到“频率”。 */
   function renderVisualFreqStep() {
     const data = buildVisualData();
     stage.innerHTML =
-      '<div class="hvs-block"><div class="hvs-head">丢掉低频还是高频，你还认得出是什么？<span>8×8 DCT 后按 Zigzag 保留系数</span></div>' +
+      '<div class="hvs-block"><div class="hvs-head">③ 低 / 高频感知<span>粗格看得清、细格糊成一片灰——删掉高频你还认得出吗？</span></div>' +
+      '<div class="grid-2">' +
+      figure('hvsCheckerLow', '低频：粗棋盘格<br><span class="ok">一眼看清</span>') +
+      figure('hvsCheckerHigh', '高频：细棋盘格<br><span class="warn">近看是格子，远看是灰</span>') +
+      '</div></div>' +
       '<div class="grid-3">' +
-      figure('hvsGray', '原图灰度（参考）') +
-      figure('hvsOnlyLow', '只留低频 10 个<br><span class="ok">还能认出轮廓</span>') +
-      figure('hvsOnlyHigh', '只留高频 54 个（提亮）<br><span class="warn">只剩纹理，认不出</span>') +
-      '</div></div>';
+      figure('hvsGray', '你的照片 · 灰度（参考）') +
+      figure('hvsOnlyLow', '删掉高频（只留前 10 个低频系数）<br><span class="ok">几乎没差别</span>') +
+      figure('hvsOnlyHigh', '反过来只留高频（已提亮）<br><span class="warn">只剩纹理，认不出</span>') +
+      '</div>' +
+      figure('hvsRowCurve', '中间那一行的亮度值：走得平 = 低频，跳得急 = 高频') +
+      '<div class="hvs-conclusion">人眼靠低频认物体、对高频不敏感 → JPEG 敢把高频系数大量置零（量化那一步）</div>';
+    drawCheckerInto(setupCanvas('hvsCheckerLow', 220, 220), 44);
+    drawCheckerInto(setupCanvas('hvsCheckerHigh', 220, 220), 4);
     drawPlaneInto(setupCanvas('hvsGray', 320, 240), data.gray, data.grayWidth, data.grayHeight);
     drawPlaneInto(setupCanvas('hvsOnlyLow', 320, 240), data.onlyLow, data.grayWidth, data.grayHeight);
     drawPlaneInto(setupCanvas('hvsOnlyHigh', 320, 240), data.onlyHigh, data.grayWidth, data.grayHeight);
+    drawRowLumaCurve(setupCanvas('hvsRowCurve', 1040, 190), data.planes);
+  }
+
+  function drawCheckerInto(target, cell) {
+    const context = target.ctx;
+    context.clearRect(0, 0, target.w, target.h);
+    for (let y = 0; y < target.h; y += cell) {
+      for (let x = 0; x < target.w; x += cell) {
+        const odd = (Math.floor(x / cell) + Math.floor(y / cell)) % 2 === 1;
+        context.fillStyle = odd ? '#111827' : '#f8fafc';
+        context.fillRect(x, y, cell, cell);
+      }
+    }
+  }
+
+  /* 视频里那条“这行像素的亮度值”曲线：平缓处是低频，跳变处是高频。 */
+  function drawRowLumaCurve(target, planes) {
+    const context = target.ctx;
+    const width = state.width;
+    const height = state.height;
+    const plane = planes.y;
+    // 就取画面正中间那一行，观众可以直接和上面的图对上位置。
+    const bestRow = Math.floor(height / 2);
+    const left = 48;
+    const right = target.w - 18;
+    const top = 24;
+    const bottom = target.h - 30;
+    context.clearRect(0, 0, target.w, target.h);
+
+    context.font = '10px Consolas, monospace';
+    context.strokeStyle = 'rgba(148,163,184,0.45)';
+    context.lineWidth = 1;
+    context.setLineDash([4, 4]);
+    [0, 64, 128, 192, 255].forEach(function (value) {
+      const y = bottom - value / 255 * (bottom - top);
+      context.beginPath();
+      context.moveTo(left, y);
+      context.lineTo(right, y);
+      context.stroke();
+      context.fillStyle = '#94a3b8';
+      context.textAlign = 'right';
+      context.textBaseline = 'middle';
+      context.fillText(String(value), left - 6, y);
+    });
+    context.setLineDash([]);
+
+    const scaleX = (right - left) / Math.max(1, width - 1);
+    for (let x = 1; x < width; x++) {
+      const previous = plane[bestRow * width + x - 1];
+      const current = plane[bestRow * width + x];
+      const jump = Math.abs(current - previous);
+      context.strokeStyle = jump >= 18 ? 'rgba(194,65,12,0.9)' : 'rgba(29,78,216,0.85)';
+      context.lineWidth = jump >= 18 ? 1.8 : 1.2;
+      context.beginPath();
+      context.moveTo(left + (x - 1) * scaleX, bottom - previous / 255 * (bottom - top));
+      context.lineTo(left + x * scaleX, bottom - current / 255 * (bottom - top));
+      context.stroke();
+    }
+
+    context.fillStyle = '#334155';
+    context.font = '600 11px "Microsoft YaHei", sans-serif';
+    context.textAlign = 'left';
+    context.textBaseline = 'alphabetic';
+    context.fillText('第 ' + (bestRow + 1) + ' 行的亮度值（0–255）', left, 15);
+    context.font = '10.5px "Microsoft YaHei", sans-serif';
+    context.fillStyle = '#1d4ed8';
+    context.fillText('蓝：走得平 → 低频', left + 240, 15);
+    context.fillStyle = '#c2410c';
+    context.fillText('橙：跳得急 → 高频', left + 400, 15);
+    context.fillStyle = '#94a3b8';
+    context.font = '10px Consolas, monospace';
+    context.textAlign = 'left';
+    context.textBaseline = 'top';
+    context.fillText('像素位 0', left, bottom + 6);
+    context.textAlign = 'right';
+    context.fillText('像素位 ' + (width - 1), right, bottom + 6);
   }
 
   const RENDERERS = [
@@ -2477,14 +4047,12 @@
   function renderLeft() {
     const entry = FLOW_ENTRIES[state.flowIndex] || { chapterShort: '' };
     const step = flowStep(state.flowIndex);
-    document.getElementById('stepKicker').textContent = 'CHAPTER ' + entry.chapterShort + ' · ' + step.tag;
+    document.getElementById('stepKicker').textContent = 'CHAPTER ' + chapterLabel(entry) + ' ' + entry.chapterShort + ' · ' + step.tag;
     document.getElementById('stepTitle').textContent = step.title;
     document.getElementById('stepLead').textContent = step.lead;
     document.getElementById('stepPrinciple').innerHTML = step.principle;
     document.getElementById('stepFormula').textContent = step.formula;
-    document.getElementById('stepParams').innerHTML = step.params().map(function (row) {
-      return '<div><span>' + escapeHTML(row[0]) + '</span><b>' + row[1] + '</b></div>';
-    }).join('');
+    refreshStepParams();
     document.getElementById('stepTips').innerHTML = step.tips.map(function (tip) {
       return '<li>' + escapeHTML(tip) + '</li>';
     }).join('');
@@ -2505,15 +4073,20 @@
         else if (action === 'idct') startIdctAnim();
         else if (action === 'tour') startBlockTour();
         else if (action === 'twopass') startDctTwoPass();
-        else if (action === 'dctcoeff') {
-          stopVisualAnimations();
-          state.dctView = 'coeff';
-          state.dctRowStep = 8;
-          state.dctColStep = 8;
-          renderDctStep();
-        }
+        else if (action === 'goto') gotoChapter(button.getAttribute('data-target'));
+        else if (action === 'basissum') startBasisSum();
       });
     });
+  }
+
+  /* 只刷新左侧参数卡，动画过程中每几帧调一次，避免整页重绘 */
+  function refreshStepParams() {
+    const step = flowStep(state.flowIndex);
+    const container = document.getElementById('stepParams');
+    if (!container) return;
+    container.innerHTML = step.params().map(function (row) {
+      return '<div><span>' + escapeHTML(row[0]) + '</span><b>' + row[1] + '</b></div>';
+    }).join('');
   }
 
   function moveBlock(delta) {
@@ -2526,6 +4099,8 @@
     state.blockY = Math.floor(index / columns);
     state.hoverBlock = null;
     state.selectedCoeff = -1;
+    state.dctUseCount = 8;
+    state.dctSumStep = 64;
     state.basis = null;
     if (state.step === 0) {
       refreshSourceCanvas();
@@ -2544,7 +4119,7 @@
     container.innerHTML = FLOW_ENTRIES.map(function (entry, index) {
       const step = flowStep(index);
       return '<button data-index="' + index + '" class="' + (index === state.flowIndex ? 'on' : '') + '"><span class="n">' +
-        String(index + 1).padStart(2, '0') + '</span>' + step.short + '</button>';
+        chapterLabel(entry) + '</span>' + step.short + '</button>';
     }).join('');
     Array.prototype.forEach.call(container.querySelectorAll('button'), function (button) {
       button.addEventListener('click', function () {
@@ -2553,13 +4128,30 @@
     });
   }
 
+  /* DCT 拆成 5 张演示页，每页共用 STEPS[4]，靠子步骤决定画哪一版 */
+  const DCT_VIEWS = ['shift', 'oneD', 'twopass', 'coeff', 'rebuild'];
+
+  function gotoChapter(target) {
+    const parts = String(target).split(':');
+    const chapter = parts[0];
+    const sub = parts.length > 1 ? Number(parts[1]) : 0;
+    for (let i = 0; i < FLOW_ENTRIES.length; i++) {
+      const entry = FLOW_ENTRIES[i];
+      if (entry.chapter === chapter && (entry.subIndex || 0) === sub) { setStep(i); return; }
+    }
+  }
+
   function setStep(index) {
     state.flowIndex = clamp(index, 0, FLOW_ENTRIES.length - 1);
-    state.step = FLOW_ENTRIES[state.flowIndex].step;
+    const entry = FLOW_ENTRIES[state.flowIndex];
+    state.step = entry.step;
     state.selectedCoeff = -1;
-    state.dctView = 'coeff';
+    state.dctView = entry.chapter === 'dct' ? DCT_VIEWS[clamp(entry.subIndex, 0, DCT_VIEWS.length - 1)] : 'coeff';
+    state.dctRow = -1;
+    state.dctUseCount = 8;
     state.dctRowStep = 8;
     state.dctColStep = 8;
+    state.dctSumStep = 64;
     state.assemblyStep = state.encoded ? state.encoded.mcus.length : 0;
     stopVisualAnimations();
     render();
@@ -2611,31 +4203,27 @@
   let basisFrame = null;
   let basisCleanupTimer = null;
   function startBasis() {
+    if (state.step !== 4) return;
     stopVisualAnimations();
-    if (state.dctView !== 'coeff') {
-      state.dctView = 'coeff';
+    state.dctUseCount = 0;
+    if (state.dctView !== 'oneD') {
+      state.dctView = 'oneD';
       renderDctStep();
     }
-    const block = encodedBlock();
-    const order = Array.from({ length: 64 }, function (_, index) { return index; })
-      .sort(function (a, b) { return Math.abs(block.coefficients[b]) - Math.abs(block.coefficients[a]); });
-    let totalEnergy = 0;
-    for (let i = 0; i < 64; i++) totalEnergy += block.coefficients[i] * block.coefficients[i];
-    const basis = {
-      active: true, step: 0, order: order, F: block.coefficients,
-      totalEnergy: totalEnergy, start: performance.now()
-    };
+    const basis = { active: true, step: 0, row: state.dctRow, start: performance.now() };
     state.basis = basis;
-    const canvas = document.getElementById('dctMain');
-    if (!canvas) { state.basis = null; return; }
-    const target = { canvas: canvas, ctx: canvas.getContext('2d'), w: 380, h: 380 };
+    const target = setupCanvas('dctRowBasis', 1240, 850);
+    if (!target) { state.basis = null; return; }
     function frame(now) {
       if (state.basis !== basis) return;
       if (state.step !== 4) { state.basis = null; return; }
       const raw = Math.min(1, (now - basis.start) / ANIM.duration('basis'));
       const progressValue = ANIM.ease.easeInOutCubic(raw);
-      basis.step = Math.max(1, Math.min(64, Math.ceil(progressValue * 64)));
-      drawDctMain(target);
+      basis.step = Math.min(8, Math.ceil(progressValue * 8));
+      state.dctUseCount = basis.step;
+      drawRowBasis(target);
+      syncUseButtons(basis.step);
+      refreshRowReadout();
       if (raw < 1) {
         basisFrame = requestAnimationFrame(frame);
       } else {
@@ -2643,7 +4231,7 @@
           basisCleanupTimer = null;
           if (state.basis === basis) {
             state.basis = null;
-            if (state.step === 4) renderDctStep();
+            if (state.step === 4) renderDctOneD();
           }
         }, Math.round(900 * ANIM.scale));
       }
@@ -2651,9 +4239,43 @@
     basisFrame = requestAnimationFrame(frame);
   }
 
+  function startBasisSum() {
+    if (state.step !== 4) return;
+    stopVisualAnimations();
+    if (state.dctView !== 'rebuild') {
+      state.dctView = 'rebuild';
+      renderDctStep();
+    }
+    state.dctSumStep = 0;
+    drawDctRebuildViews();
+    syncRebuildButtons();
+    refreshStepParams();
+    const total = 64;
+    let tick = 0;
+    state.dctSumTimer = setInterval(function () {
+      tick += 1;
+      state.dctSumStep = Math.min(total, Math.ceil(ANIM.progress('basissum', tick, total) * total));
+      if (state.step === 4 && state.dctView === 'rebuild') {
+        drawDctRebuildViews();
+        syncRebuildButtons();
+        if (tick % 4 === 0) refreshStepParams();
+      }
+      if (tick >= total) {
+        state.dctSumStep = total;
+        if (state.step === 4 && state.dctView === 'rebuild') {
+          drawDctRebuildViews();
+          syncRebuildButtons();
+          refreshStepParams();
+        }
+        clearInterval(state.dctSumTimer);
+        state.dctSumTimer = null;
+      }
+    }, ANIM.interval('basissum', total));
+  }
+
   function stopVisualAnimations() {
     stopZigzag();
-    ['quantTimer', 'rleTimer', 'bitTimer', 'decodeTimer', 'idctTimer', 'tourTimer', 'dctPassTimer', 'assemblyTimer'].forEach(function (key) {
+    ['quantTimer', 'rleTimer', 'bitTimer', 'decodeTimer', 'idctTimer', 'tourTimer', 'dctPassTimer', 'dctSumTimer', 'assemblyTimer'].forEach(function (key) {
       if (state[key]) {
         clearInterval(state[key]);
         state[key] = null;
@@ -3127,22 +4749,37 @@
   /* ------------------------------------------------------------------ */
 
   const FLOW_CHAPTERS = [
-    { id: 'luma', short: '01 亮度与色度', title: '亮度与色度：人眼更依赖亮度', steps: [14, 15] },
-    { id: 'freq', short: '02 低频与高频', title: '低频与高频：人眼靠低频认物体', steps: [16] },
-    { id: 'input', short: '03 输入解码', title: '输入：从 JPG 解码出 RGB', steps: [0] },
-    { id: 'prep', short: '04 编码准备', title: '编码准备：YCbCr、色度采样与分块', steps: [1, 2, 3] },
-    { id: 'core', short: '05 DCT与量化', title: 'DCT 与量化：真正丢信息的地方', steps: [4, 5] },
-    { id: 'packResult', short: '06 码流与结果', title: 'Zigzag/Huffman 与熵编码输出', steps: [6, 7, 8, 9] },
-    { id: 'decode', short: '07 解码原理', title: '解码：位流如何变回像素', steps: [10, 11, 12, 13] },
-    { id: 'result', short: '08 二次压缩结果', title: '二次压缩结果', steps: [13] }
+    { id: 'luma', short: '亮度与色度', title: '亮度与色度：人眼更依赖亮度', steps: [14, 15] },
+    { id: 'freq', short: '低频与高频', title: '低频与高频：人眼靠低频认物体', steps: [16] },
+    { id: 'input', short: '输入解码', title: '输入：从 JPG 解码出 RGB', steps: [0] },
+    { id: 'prep', short: '编码准备', title: '编码准备：YCbCr、色度采样与分块', steps: [1, 2, 3] },
+    { id: 'dct', short: 'DCT', title: 'DCT：把 8×8 块换成 64 个余弦权重', steps: [4, 4, 4, 4, 4] },
+    { id: 'quant', short: '量化', title: '量化：系数域中真正丢信息的一步', steps: [5] },
+    { id: 'packResult', short: '码流与结果', title: 'Zigzag/Huffman 与熵编码输出', steps: [6, 7, 8, 9] },
+    { id: 'decode', short: '解码原理', title: '解码：位流如何变回像素', steps: [10, 11, 12, 13] },
+    { id: 'result', short: '二次压缩结果', title: '二次压缩结果', steps: [13] }
   ];
 
-  FLOW_ENTRIES = FLOW_CHAPTERS.reduce(function (list, chapter) {
-    chapter.steps.forEach(function (step) {
-      list.push({ chapter: chapter.id, chapterShort: chapter.short, step: step });
+  FLOW_ENTRIES = FLOW_CHAPTERS.reduce(function (list, chapter, chapterIndex) {
+    chapter.steps.forEach(function (step, subIndex) {
+      list.push({
+        chapter: chapter.id,
+        chapterShort: chapter.short,
+        chapterIndex: chapterIndex,
+        chapterCount: chapter.steps.length,
+        subIndex: subIndex,
+        step: step
+      });
     });
     return list;
   }, []);
+
+  /* 章节号 + 子步骤号，例如 05.2；单步章节只显示 05 */
+  function chapterLabel(entry) {
+    if (!entry || typeof entry.chapterIndex !== 'number') return '';
+    const base = String(entry.chapterIndex + 1).padStart(2, '0');
+    return entry.chapterCount > 1 ? base + '.' + (entry.subIndex + 1) : base;
+  }
 
 
   function openSettings() {

@@ -21,6 +21,8 @@ vm.createContext(sandbox);
 const Codec = sandbox.window.JpegCodec;
 const Photos = sandbox.window.DEMO_PHOTOS;
 const Demo = sandbox.window.DEMO_DATA;
+// 网页样例已移除这张灰度图，仅测试用它对照 MATLAB 的 Y 通道结果。
+const peppers = require('./fixtures/peppers_gray.js');
 
 let passed = 0;
 let failed = 0;
@@ -178,7 +180,7 @@ test('真实照片在全部采样与关键质量下可逆且位流完全消费',
 });
 
 test('灰度 Y 路径与 MATLAB 参考一致（Q=50, 4:4:4）', function () {
-  const image = Demo.images.find(function (item) { return item.name === 'peppers_gray'; });
+  const image = peppers;
   const raw = Buffer.from(image.pixels, 'base64');
   const rgb = new Uint8ClampedArray(raw.length * 4);
   for (let i = 0; i < raw.length; i++) {

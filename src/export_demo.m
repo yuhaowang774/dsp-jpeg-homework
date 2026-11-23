@@ -20,7 +20,8 @@ demo = struct();
 demo.version = '1.0';
 
 % 图像像素按行优先展平后Base64编码，前端可直接还原为Uint8Array。
-names = ["peppers_gray","synthetic_gradient","synthetic_texture","synthetic_text"];
+% 网页样例不含 MATLAB 自带的辣椒照片：该图只留在 MATLAB 实验与测试参考里。
+names = ["synthetic_gradient","synthetic_texture","synthetic_text"];
 images = struct('name',{},'width',{},'height',{},'pixels',{});
 for imageIndex = 1:numel(names)
     image = imread(fullfile(projectRoot,'data',names(imageIndex)+".png"));
@@ -73,7 +74,9 @@ for row = 1:height(measurements)
     metrics(row).fileBytes = double(measurements.FileBytes(row));
     metrics(row).zeroFraction = double(measurements.ZeroFraction(row));
 end
-demo.metrics = metrics;
+% 指标表也去掉辣椒照片的行，保持网页数据与网页样例一致。
+keepRow = ~strcmp({metrics.image},'peppers_gray');
+demo.metrics = metrics(keepRow);
 
 % 参考结果供前端自检：整图熵位数、PSNR与逐块位数应完全一致。
 cases = struct('image',{},'quality',{},'mode',{},'entropyBits',{}, ...

@@ -161,13 +161,13 @@ function test(name, body) {
   }
 }
 
-test('初始化：2 张原生风景示例、6 个样例与 18 个教学流节点', function () {
+test('初始化：2 张原生风景示例、5 个样例与 18 个教学流节点', function () {
   assert.strictEqual(window.DEMO_PHOTOS.length, 2);
   assert.strictEqual(window.DEMO_PHOTOS[0].width, 1024);
   assert.strictEqual(window.DEMO_PHOTOS[1].width, 640);
-  assert.strictEqual(store.sampleButtons.children.length, 6);
+  assert.strictEqual(store.sampleButtons.children.length, 5);
   assert.strictEqual(store.stepper.children.length, 18);
-  assert.strictEqual(store.stepTitle.textContent, '亮度与色度：人眼更依赖亮度');
+  assert.strictEqual(store.stepTitle.textContent, '人眼先看亮度，再看颜色');
   assert.ok(store.hvsLumaOrig.width > 0);
 });
 
@@ -188,7 +188,7 @@ const expectedIds = [
   ['dqOriginal', 'dqQuantized', 'dqTable', 'dqRestored'],
   ['idctOriginal', 'idctRestored', 'idctError'],
   ['finalOriginal', 'finalDecoded', 'finalError'],
-  ['hvsLumaOrig', 'hvsLumaY', 'hvsLumaCb', 'hvsLumaCr'],
+  ['hvsLumaOrig', 'hvsLumaY', 'hvsLumaColor'],
   ['hvsOriginal', 'hvsLowChroma', 'hvsLowLuma'],
   ['hvsGray', 'hvsOnlyLow', 'hvsOnlyHigh']
 ];
@@ -268,6 +268,22 @@ test('DCT 行列分解视图与返回系数视图', function () {
   assert.ok(back, '缺少返回按钮');
   back.fire('click');
   assert.ok(store.stage.innerHTML.indexOf('dctMain') >= 0);
+});
+
+test('DCT 一维分解视图：8 个行选择与余弦加权读数', function () {
+  goTo(7);
+  const oneD = store.stepTools.children.find(function (button) { return button.getAttribute('data-action') === 'oneD'; });
+  assert.ok(oneD, '缺少一维分解按钮');
+  oneD.fire('click');
+  assert.ok(store.stage.innerHTML.indexOf('dctRowWave') >= 0, '缺少像素→系数画布');
+  assert.ok(store.stage.innerHTML.indexOf('dctRowBasis') >= 0, '缺少余弦加权画布');
+  assert.ok(store.dctRowReadout.textContent.indexOf('帕塞瓦尔') >= 0, '缺少帕塞瓦尔读数');
+  const rows = store.stage.children.filter(function (node) {
+    return node.tagName === 'BUTTON' && node.getAttribute('data-index') !== null;
+  });
+  assert.strictEqual(rows.length, 8, '应有 8 个行选择按钮');
+  rows[2].fire('click');
+  assert.ok(store.dctRowReadout.textContent.indexOf('第 3 行') >= 0, store.dctRowReadout.textContent);
 });
 
 test('质量、采样、分量与样例切换均可重建', function () {

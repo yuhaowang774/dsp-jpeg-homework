@@ -10,9 +10,9 @@ URL = URL_BASE
 os.makedirs(OUT, exist_ok=True)
 
 expected_titles = [
-    '亮度与色度：人眼更依赖亮度',
-    '亮度与色度：同样砍到 1/4，差别有多大？',
-    '低频与高频：人眼靠低频认物体',
+    '人眼先看亮度，再看颜色',
+    '压缩颜色信息：4 个色度并成 1 个',
+    '人眼对高频不敏感，所以敢删',
     '源图像与 8×8 分块',
     'RGB → YCbCr 颜色空间转换',
     '色度下采样',
@@ -54,7 +54,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(700)
 
     checks.append(('initial_samples', page.locator('#sampleButtons button').count()))
-    assert page.locator('#sampleButtons button').count() == 6, 'expected 6 samples'
+    assert page.locator('#sampleButtons button').count() == 5, 'expected 5 samples'
     checks.append(('initial_stepper', page.locator('#stepper button').count()))
     source_w = int(page.locator('#hvsLumaOrig').get_attribute('width'))
     source_h = int(page.locator('#hvsLumaOrig').get_attribute('height'))
@@ -85,6 +85,14 @@ with sync_playwright() as p:
         errors.append('DCT two-pass view not rendered')
     page.locator('#passBack').click()
     page.wait_for_timeout(300)
+
+    page.locator('#stepTools button[data-action="oneD"]').click()
+    page.wait_for_timeout(400)
+    path = os.path.join(OUT, '17_dct_1d.png')
+    page.screenshot(path=path)
+    screenshots.append(path)
+    if 'dctRowWave' not in page.content():
+        errors.append('DCT one-dimensional view not rendered')
 
     page.locator('#stepper button[data-index="5"]').click()
     page.wait_for_timeout(300)
@@ -117,7 +125,7 @@ with sync_playwright() as p:
 
     page.locator('#stepper button[data-index="3"]').click()
     page.wait_for_timeout(300)
-    page.set_input_files('#fileInput', os.path.join(ROOT, 'data', 'peppers_gray.png'))
+    page.set_input_files('#fileInput', os.path.join(ROOT, 'data', 'synthetic_texture.png'))
     page.wait_for_timeout(1500)
     path = os.path.join(OUT, '20_upload.png')
     page.screenshot(path=path)
