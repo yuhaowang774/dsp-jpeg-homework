@@ -1578,12 +1578,14 @@
       state.dctColStep = 8;
       renderDctStep();
     });
-    drawCells(setupCanvas('passOriginal', 360, 360), block.pixels, function (value) {
+    drawCells(setupCanvas('passOriginal', 380, 380), block.pixels, function (value) {
       return grayColor(value + 128);
     }, {
       text: function (value) { return String(Math.round(value + 128)); },
       gridColor: 'rgba(255,255,255,0.55)'
     });
+    setupCanvas('passTemp', 380, 380);
+    setupCanvas('passFinal', 380, 380);
     refreshDctTwoPass();
   }
 
@@ -1603,7 +1605,7 @@
         context.fillRect(column * cellWidth, row * cellHeight, cellWidth, cellHeight);
         if (done) {
           context.fillStyle = textColor(rgb);
-          context.font = '600 10px Consolas, monospace';
+          context.font = '600 11px Consolas, monospace';
           context.textAlign = 'center';
           context.textBaseline = 'middle';
           context.fillText(formatValue(values[index]),
@@ -1634,8 +1636,8 @@
     const finalCanvas = document.getElementById('passFinal');
     const tempCanvas = document.getElementById('passTemp');
     if (!finalCanvas || !tempCanvas) return;
-    drawPassMatrix({ canvas: tempCanvas, ctx: tempCanvas.getContext('2d'), w: 360, h: 360 }, temporary, state.dctRowStep, 'row');
-    drawPassMatrix({ canvas: finalCanvas, ctx: finalCanvas.getContext('2d'), w: 360, h: 360 }, block.coefficients, state.dctColStep, 'col');
+    drawPassMatrix({ canvas: tempCanvas, ctx: tempCanvas.getContext('2d'), w: 380, h: 380 }, temporary, state.dctRowStep, 'row');
+    drawPassMatrix({ canvas: finalCanvas, ctx: finalCanvas.getContext('2d'), w: 380, h: 380 }, block.coefficients, state.dctColStep, 'col');
     const readout = document.getElementById('passReadout');
     if (!readout) return;
     if (state.dctRowStep < 8) {

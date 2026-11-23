@@ -262,6 +262,8 @@ test('DCT 行列分解视图与返回系数视图', function () {
   pump(40);
   assert.ok(store.stage.innerHTML.indexOf('passTemp') >= 0);
   assert.ok(store.stage.innerHTML.indexOf('passFinal') >= 0);
+  assert.strictEqual(store.passTemp.width, store.passTemp.height);
+  assert.strictEqual(store.passFinal.width, store.passFinal.height);
   const back = store.dctBack || store.passBack;
   assert.ok(back, '缺少返回按钮');
   back.fire('click');
