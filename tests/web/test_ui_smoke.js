@@ -188,7 +188,7 @@ const expectedByStepId = {
   quant: ['quantTable', 'quantCoeff', 'quantError'],
   zigzag: ['zigMain', 'zigSeq'],
   rle: ['rleStrip'],
-  huffman: ['huffBits', 'huffBytes', 'huffCurrent'],
+  huffman: ['huffTree', 'huffBits', 'huffBytes', 'huffCurrent'],
   bitstream: ['bitBars', 'bitHist', 'bitAssembly'],
   decEntropy: ['decodeWrap', 'decodeBitStrip'],
   dequant: ['dqOriginal', 'dqQuantized', 'dqTable', 'dqRestored'],

@@ -179,6 +179,18 @@ test('真实照片在全部采样与关键质量下可逆且位流完全消费',
   assert.strictEqual(cases, images.length * modes.length * qualities.length);
 });
 
+test('取整规则与 MATLAB round 一致（含 0.5 前一格的双精度值）', function () {
+  const round = Codec.matlabRound;
+  assert.strictEqual(round(0.5), 1);
+  assert.strictEqual(round(-0.5), -1);
+  assert.strictEqual(round(2.5), 3);
+  assert.strictEqual(round(-2.5), -3);
+  assert.strictEqual(round(0.49999999999999994), 0, '0.5 前一格不能进位');
+  assert.strictEqual(round(-0.49999999999999994), 0, '-0.5 后一格不能舍入到 -1');
+  assert.strictEqual(round(0), 0);
+  assert.strictEqual(round(-0.0000000000000001), 0);
+});
+
 test('灰度 Y 路径与 MATLAB 参考一致（Q=50, 4:4:4）', function () {
   const image = peppers;
   const raw = Buffer.from(image.pixels, 'base64');

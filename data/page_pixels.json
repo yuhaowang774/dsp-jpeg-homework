@@ -1,0 +1,57 @@
+{
+  "source": "web/photos.js",
+  "images": [
+    {
+      "slug": "demo_photo_1024",
+      "name": "风景示例 1024×1024",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 3145728,
+      "file": "data/demo_photo_1024_page.png",
+      "sha256": "8b5c52491adaeaee5c132dddf0c4ef7fb85f4dceeb61090f319c03b776746138",
+      "channelSums": [
+        133934168,
+        121724195,
+        116574153
+      ],
+      "samples": {
+        "0,0": [
+          171,
+          174,
+          187
+        ],
+        "512,512": [
+          83,
+          83,
+          92
+        ]
+      }
+    },
+    {
+      "slug": "demo_photo_640",
+      "name": "风景示例 640×640",
+      "width": 640,
+      "height": 640,
+      "bytes": 1228800,
+      "file": "data/demo_photo_640_page.png",
+      "sha256": "3370cdaa77488bd8fa1636f6c8e74b635ab262c3314410fb3ab912f54293cee4",
+      "channelSums": [
+        52318673,
+        47548734,
+        45533463
+      ],
+      "samples": {
+        "0,0": [
+          172,
+          174,
+          186
+        ],
+        "512,512": [
+          148,
+          81,
+          3
+        ]
+      }
+    }
+  ]
+}

@@ -54,8 +54,20 @@
     T.push(row);
   }
 
+  /* 与 MATLAB round 相同的“四舍五入、远离零”。
+   * 不能写成 floor(value + 0.5)：value 恰为 0.5 的前一个双精度数时，
+   * value + 0.5 会被舍入成 1.0，从而把 0.49999999999999994 进位成 1。
+   * MATLAB 的 round 对它是 0，量化系数因此会在个别位置差 1。 */
   function matlabRound(value) {
-    return value >= 0 ? Math.floor(value + 0.5) : Math.ceil(value - 0.5);
+    if (!isFinite(value)) return value;
+    if (value >= 0) {
+      const floor = Math.floor(value);
+      return value - floor >= 0.5 ? floor + 1 : floor;
+    }
+    const ceil = Math.ceil(value);
+    const rounded = ceil - value >= 0.5 ? ceil - 1 : ceil;
+    // 归一化负零，保证 -1e-16 之类的结果是 0 而不是 -0。
+    return rounded === 0 ? 0 : rounded;
   }
 
   function buildHuffman(counts, values) {
@@ -145,9 +157,9 @@
       const r = rgb[i * 4];
       const g = rgb[i * 4 + 1];
       const b = rgb[i * 4 + 2];
-      y[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-      cb[i] = Math.round(128 - 0.168736 * r - 0.331264 * g + 0.5 * b);
-      cr[i] = Math.round(128 + 0.5 * r - 0.418688 * g - 0.081312 * b);
+      y[i] = matlabRound(0.299 * r + 0.587 * g + 0.114 * b);
+      cb[i] = matlabRound(128 - 0.168736 * r - 0.331264 * g + 0.5 * b);
+      cr[i] = matlabRound(128 + 0.5 * r - 0.418688 * g - 0.081312 * b);
     }
     return { y: y, cb: cb, cr: cr };
   }
@@ -158,9 +170,9 @@
       const yy = y[i];
       const cbValue = cb[i] - 128;
       const crValue = cr[i] - 128;
-      output[i * 4] = Math.round(yy + 1.402 * crValue);
-      output[i * 4 + 1] = Math.round(yy - 0.344136 * cbValue - 0.714136 * crValue);
-      output[i * 4 + 2] = Math.round(yy + 1.772 * cbValue);
+      output[i * 4] = matlabRound(yy + 1.402 * crValue);
+      output[i * 4 + 1] = matlabRound(yy - 0.344136 * cbValue - 0.714136 * crValue);
+      output[i * 4 + 2] = matlabRound(yy + 1.772 * cbValue);
       output[i * 4 + 3] = 255;
     }
     return output;
@@ -393,6 +405,11 @@
     for (let i = 0; i < paddedBits.length; i += 8) {
       if (parseInt(paddedBits.slice(i, i + 8), 2) === 255) stuffing += 1;
     }
+    const entropyBytes = Math.ceil(bitstream.length / 8);
+    // JFIF 头固定 607 字节（SOI2+APP0 18+DQT 134+SOF0 19+DHT 420+SOS 14），EOI 2 字节；
+    // 与 src/jpeg_encode_color.m 的 headerAndMarkerBytes 完全相同。
+    const headerBytes = 609;
+    const fileBytes = headerBytes + entropyBytes + stuffing;
 
     return {
       width: width,
@@ -411,7 +428,9 @@
       stats: {
         totalBits: bitstream.length,
         paddingBits: padding,
-        entropyBytes: Math.ceil(bitstream.length / 8),
+        entropyBytes: entropyBytes,
+        headerBytes: headerBytes,
+        fileBytes: fileBytes,
         stuffingBytes: stuffing,
         bitsPerComponent: bitsPerComponent,
         zeroCount: zeroCount,
@@ -587,6 +606,7 @@
     dct2: dct2,
     idct2: idct2,
     amplitudeBits: amplitudeBits,
+    matlabRound: matlabRound,
     T: T,
     ZIG: ZIG,
     DC_TABLE: DC_TABLE,
