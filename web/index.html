@@ -133,8 +133,17 @@
   .chip{background:#eef3fb;border:1px solid #dbe6f5;border-radius:999px;padding:3px 9px;font-size:11.5px;color:#334155}
   .note{font-size:12px;color:var(--muted)}
   .hvs-block{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:14px;background:#fbfcfe}
-  .hvs-head{font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px}
-  .hvs-head span{font-weight:400;color:var(--muted);font-size:11.5px;margin-left:8px}
+  .hvs-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px}
+  .hvs-head span{font-weight:400;color:var(--muted);font-size:11.5px;margin-left:0}
+  .hvs-pager{display:flex;gap:4px;margin-left:auto;flex-shrink:0}
+  .hvs-pager button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 10px;font-size:11.5px;color:var(--muted);cursor:pointer;white-space:nowrap}
+  .hvs-pager button:hover{border-color:#9fb3cc;color:var(--text)}
+  .hvs-pager button.on{background:var(--blue-soft);border-color:#9db8f5;color:var(--blue);font-weight:600}
+  .hvs-page[hidden]{display:none}
+  .hvs-page .hvs-hint{font-size:11.5px;color:var(--muted);text-align:center;margin-top:8px}
+  figure.hvs-solid{display:flex;flex-direction:column;align-items:center;justify-content:space-between;height:100%}
+  figure.hvs-solid canvas{margin:0 auto;max-width:100%}
+  figure.hvs-solid figcaption{margin-top:8px}
   .hvs-source-row{display:flex;justify-content:center;margin-bottom:10px}
   .hvs-sliders{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px}
   .hvs-sliders label{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
@@ -408,29 +417,6 @@
     const context = offscreen.getContext('2d');
     const imageData = context.createImageData(width, height);
     imageData.data.set(rgb);
-    context.putImageData(imageData, 0, 0);
-    target.ctx.imageSmoothingEnabled = false;
-    target.ctx.drawImage(offscreen, 0, 0, target.w, target.h);
-  }
-
-  function drawRGBRegionInto(target, rgb, width, height, regionW, regionH, originX, originY) {
-    const offscreen = document.createElement('canvas');
-    offscreen.width = regionW;
-    offscreen.height = regionH;
-    const context = offscreen.getContext('2d');
-    const imageData = context.createImageData(regionW, regionH);
-    const startX = originX === undefined ? Math.max(0, Math.floor((width - regionW) / 2)) : originX;
-    const startY = originY === undefined ? Math.max(0, Math.floor((height - regionH) / 2)) : originY;
-    for (let y = 0; y < regionH; y++) {
-      for (let x = 0; x < regionW; x++) {
-        const source = ((startY + y) * width + (startX + x)) * 4;
-        const destination = (y * regionW + x) * 4;
-        imageData.data[destination] = rgb[source];
-        imageData.data[destination + 1] = rgb[source + 1];
-        imageData.data[destination + 2] = rgb[source + 2];
-        imageData.data[destination + 3] = 255;
-      }
-    }
     context.putImageData(imageData, 0, 0);
     target.ctx.imageSmoothingEnabled = false;
     target.ctx.drawImage(offscreen, 0, 0, target.w, target.h);
@@ -1305,29 +1291,12 @@
       tools: function () { return ''; }
     },
     {
-      id: 'visualLumaCompare', short: '颜色压缩', tag: '原理 02',
-      title: '压缩颜色信息：4 个色度并成 1 个',
-      lead: '亮度和色度都砍到 1/4，哪一张先露出方块？答案是亮度——所以 JPEG 第一步只砍色度。',
-      principle: '<p>把每 2×2 个色度小块取平均、合并成一个大格，就是 <b>4:2:0</b> 的色度缩减采样：亮度 8×8 块仍是 64 个样本，两个色度各只剩 16 个。</p><p>右边三张图是同一个小区域放大后的样子：色度合并后几乎看不出差别；但把<b>同样的操作</b>用在亮度上，画面立刻变成马赛克——因为人眼对亮度敏感、对颜色迟钝。JPEG 正是只砍色度、亮度全留。</p><p>页面自动挑一块纹理较多的区域放大，方便对比；实际解码会用平滑插值，但被合并掉的像素回不来了。</p>',
-      formula: 'Cb/Cr：2×2 取平均 → 1 个样本（降到 1/4）\nY：保持全分辨率  →  4:2:0\n色彩空间转换 + 色度缩减采样 = JPEG 第一步',
-      tips: ['4 个色度并 1 个，就是 4:2:0', '色度合并几乎看不出，亮度合并立刻糊', '这一步不动亮度，所以画面损失很小'],
-      params: function () {
-        return [
-          ['色度缩减采样', '2×2 → 1 格'],
-          ['色度数据量', '1/4'],
-          ['放大方式', '最近邻（故意暴露像素）'],
-          ['JPEG 实际做法', '只砍色度，亮度全留']
-        ];
-      },
-      tools: function () { return ''; }
-    },
-    {
-      id: 'visualFreq', short: '低与高频', tag: '原理 03',
+      id: 'visualFreq', short: '低与高频', tag: '原理 02',
       title: '人眼对高频不敏感，所以敢删',
       lead: '粗棋盘格一眼看清，细棋盘格糊成一片灰——那删掉高频，你还认得出这张图吗？',
       principle: '<p>两块棋盘格放在眼前：粗格一眼看清，细格会糊成一片灰——人眼对<b>变化很快的细密图案</b>本来就不敏感。</p><p>把图像按 8×8 块做 DCT，再按 Zigzag 顺序切开：只留前 10 个低频系数，还能认出是山景；只留后 54 个高频系数，只剩一层看不清的纹理。自然图像的能量本来就集中在低频，所以 JPEG 敢把大量高频系数置零。</p>',
       formula: '低频：变化慢、成片、能量大 → 人眼敏感，保留\n高频：变化快、细密、能量小 → 人眼迟钝，可删',
-      tips: ['低频决定“是什么”，高频决定“有多细”', '细密条纹对比度低时，人眼几乎分辨不出', '信号“变化得快不快”，就是频率'],
+      tips: ['低频决定“是什么”，高频决定“有多细”', '细密条纹对比度低时，人眼几乎分辨不出', '信号“变化得快不快”，就是频率', '三维视图：把亮度当高度，低频是缓坡大台阶，高频是密锯齿（可拖动旋转）'],
       params: function () {
         return [
           ['低频系数', 'Zigzag 前 10 个'],
@@ -3692,34 +3661,6 @@
     return { plane: full, width: width, height: height };
   }
 
-  function chooseDetailRegion(rgb, width, height, regionW, regionH) {
-    const maxX = Math.max(0, width - regionW);
-    const maxY = Math.max(0, height - regionH);
-    let best = { x: 0, y: 0, score: -1 };
-    for (let gy = 0; gy <= 4; gy++) {
-      for (let gx = 0; gx <= 4; gx++) {
-        const x = Math.round(maxX * gx / 4);
-        const y = Math.round(maxY * gy / 4);
-        let sum = 0;
-        let squares = 0;
-        let count = 0;
-        for (let yy = 0; yy < regionH; yy += 8) {
-          for (let xx = 0; xx < regionW; xx += 8) {
-            const index = ((y + yy) * width + (x + xx)) * 4;
-            const luma = 0.299 * rgb[index] + 0.587 * rgb[index + 1] + 0.114 * rgb[index + 2];
-            sum += luma;
-            squares += luma * luma;
-            count += 1;
-          }
-        }
-        const mean = sum / count;
-        const score = squares / count - mean * mean;
-        if (score > best.score) best = { x: x, y: y, score: score };
-      }
-    }
-    return best;
-  }
-
   function frequencyFiltered(plane, width, height, keepLow, keepCount) {
     const out = new Float32Array(width * height);
     const block = new Float64Array(64);
@@ -3757,10 +3698,6 @@
     const width = state.width;
     const height = state.height;
     const planes = Codec.rgbToYCbCr(state.rgb, width, height);
-    const cbLow = halfScale(planes.cb, width, height, true, 2, true).plane;
-    const crLow = halfScale(planes.cr, width, height, true, 2, true).plane;
-    const yLow = halfScale(planes.y, width, height, true, 2, true).plane;
-    const detail = chooseDetailRegion(state.rgb, width, height, 80, 60);
     const grayHalf = halfScale(planes.y, width, height, false);
     const onlyHigh = frequencyFiltered(grayHalf.plane, grayHalf.width, grayHalf.height, false, 10);
     for (let i = 0; i < onlyHigh.length; i++) onlyHigh[i] += 128;
@@ -3768,20 +3705,16 @@
       key: key,
       original: state.rgb,
       planes: planes,
-      lowChroma: Codec.ycbcrToRgb(planes.y, cbLow, crLow, width, height),
-      lowLuma: Codec.ycbcrToRgb(yLow, planes.cb, planes.cr, width, height),
       gray: grayHalf.plane,
       onlyLow: frequencyFiltered(grayHalf.plane, grayHalf.width, grayHalf.height, true, 10),
       onlyHigh: onlyHigh,
       grayWidth: grayHalf.width,
-      grayHeight: grayHalf.height,
-      regionX: detail.x,
-      regionY: detail.y
+      grayHeight: grayHalf.height
     };
     return visualCache;
   }
 
-  /* 原理 01：照视频的讲法——一张图分两路，先问再揭晓，最后落到“压缩颜色信息”。 */
+  /* 原理 01：照视频的讲法——一张图分两路，先问再揭晓，最后落到“亮度优先、色度可砍”。 */
   function renderVisualLumaStep() {
     const data = buildVisualData();
     stage.innerHTML =
@@ -3855,85 +3788,7 @@
     }
   }
 
-  /* 原理 02：照视频的讲法——先问再比，给出“四格取平均”的操作定义，最后收成 JPEG 第一步。 */
-  function renderVisualLumaCompareStep() {
-    const data = buildVisualData();
-    stage.innerHTML =
-      '<div class="hvs-block"><div class="hvs-head">② 压缩颜色信息<span>亮度和色度都砍到 1/4，哪张先露出方块？</span></div>' +
-      '<div class="grid-3">' +
-      figure('hvsOriginal', '原图（你这张照片，放大 4 倍）') +
-      figure('hvsLowChroma', '色度 4 格并 1 格 <span class="warn">有损</span><br><span class="ok">几乎看不出</span>') +
-      figure('hvsLowLuma', '对照：亮度也 4 格并 1 格<br><span class="warn">立刻马赛克</span>') +
-      '</div>' +
-      figure('hvsMerge', '合并方法：取 4 格对应的 Cb、Cr 值求平均（数值取自你这张图的那一小块）') +
-      '<div class="hvs-conclusion">① 色彩空间转换 → ② 色度缩减采样（有损）= 压缩颜色信息，这就是 JPEG 的第一步</div>' +
-      '</div>';
-    drawRGBRegionInto(setupCanvas('hvsOriginal', 320, 240), data.original, state.width, state.height, 80, 60, data.regionX, data.regionY);
-    drawRGBRegionInto(setupCanvas('hvsLowChroma', 320, 240), data.lowChroma, state.width, state.height, 80, 60, data.regionX, data.regionY);
-    drawRGBRegionInto(setupCanvas('hvsLowLuma', 320, 240), data.lowLuma, state.width, state.height, 80, 60, data.regionX, data.regionY);
-    drawMergeCells(setupCanvas('hvsMerge', 760, 190), data);
-  }
-
-  function drawMergeCells(target, data) {
-    const context = target.ctx;
-    const startX = clamp(data.regionX + 8, 0, state.width - 2);
-    const startY = clamp(data.regionY + 8, 0, state.height - 2);
-    const rows = [
-      { name: 'Cb', offset: [[0, 0], [1, 0], [0, 1], [1, 1]], fill: '#dcfce7', note: '蓝色差：偏黄 / 偏蓝' },
-      { name: 'Cr', offset: [[0, 0], [1, 0], [0, 1], [1, 1]], fill: '#ffe4e6', note: '红色差：偏青 / 偏红' }
-    ];
-    context.clearRect(0, 0, target.w, target.h);
-    rows.forEach(function (row, index) {
-      const plane = index === 0 ? data.planes.cb : data.planes.cr;
-      const top = 10 + index * 90;
-      const values = row.offset.map(function (pair) {
-        return plane[(startY + pair[1]) * state.width + startX + pair[0]];
-      });
-      const average = values.reduce(function (sum, value) { return sum + value; }, 0) / 4;
-      context.fillStyle = '#334155';
-      context.font = '600 12px "Microsoft YaHei", sans-serif';
-      context.textAlign = 'left';
-      context.textBaseline = 'alphabetic';
-      context.fillText(row.name, 8, top + 30);
-      values.forEach(function (value, cell) {
-        const x = 46 + (cell % 2) * 54;
-        const y = top + Math.floor(cell / 2) * 30;
-        context.fillStyle = row.fill;
-        context.fillRect(x, y, 50, 26);
-        context.strokeStyle = 'rgba(15,23,42,0.22)';
-        context.lineWidth = 1;
-        context.strokeRect(x + 0.5, y + 0.5, 49, 25);
-        context.fillStyle = '#0f172a';
-        context.font = '600 11px Consolas, monospace';
-        context.textAlign = 'center';
-        context.textBaseline = 'middle';
-        context.fillText(value.toFixed(0), x + 25, y + 13);
-      });
-      context.fillStyle = '#64748b';
-      context.font = '17px sans-serif';
-      context.textAlign = 'center';
-      context.fillText('→', 172, top + 31);
-      context.fillStyle = '#94a3b8';
-      context.font = '10.5px "Microsoft YaHei", sans-serif';
-      context.fillText('取平均', 172, top + 52);
-      context.fillStyle = row.fill;
-      context.fillRect(218, top + 13, 58, 54);
-      context.strokeStyle = 'rgba(15,23,42,0.35)';
-      context.lineWidth = 1.5;
-      context.strokeRect(218.5, top + 13.5, 57, 53);
-      context.fillStyle = '#0f172a';
-      context.font = '600 15px Consolas, monospace';
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.fillText(average.toFixed(0), 247, top + 40);
-      context.fillStyle = '#64748b';
-      context.font = '11px "Microsoft YaHei", sans-serif';
-      context.textAlign = 'left';
-      context.fillText(row.note, 300, top + 40);
-    });
-  }
-
-  /* 原理 03：照视频的讲法——棋盘格设问 → 你的照片删高频 → 亮度曲线落到“频率”。 */
+  /* 原理 02：照视频的讲法——棋盘格设问 → 你的照片删高频 → 亮度曲线落到“频率”。 */
   function renderVisualFreqStep() {
     const data = buildVisualData();
     stage.innerHTML =
@@ -3948,6 +3803,7 @@
       figure('hvsOnlyHigh', '反过来只留高频（已提亮）<br><span class="warn">只剩纹理，认不出</span>') +
       '</div>' +
       figure('hvsRowCurve', '中间那一行的亮度值：走得平 = 低频，跳得急 = 高频') +
+      renderFrequencySolidHTML(data) +
       '<div class="hvs-conclusion">人眼靠低频认物体、对高频不敏感 → JPEG 敢把高频系数大量置零（量化那一步）</div>';
     drawCheckerInto(setupCanvas('hvsCheckerLow', 220, 220), 44);
     drawCheckerInto(setupCanvas('hvsCheckerHigh', 220, 220), 4);
@@ -3955,6 +3811,7 @@
     drawPlaneInto(setupCanvas('hvsOnlyLow', 320, 240), data.onlyLow, data.grayWidth, data.grayHeight);
     drawPlaneInto(setupCanvas('hvsOnlyHigh', 320, 240), data.onlyHigh, data.grayWidth, data.grayHeight);
     drawRowLumaCurve(setupCanvas('hvsRowCurve', 1040, 190), data.planes);
+    paintFrequencySolid(data);
   }
 
   function drawCheckerInto(target, cell) {
@@ -4032,12 +3889,474 @@
     context.fillText('像素位 ' + (width - 1), right, bottom + 6);
   }
 
+  /* ------------------------------------------------------------------ */
+  /* 原理 03 追加：把两块区域“立”起来看（z 轴 = 亮度）                     */
+  /* ------------------------------------------------------------------ */
+
+  const HFIELD_VIEW = { azimuth: 0.68, elevation: 0.58 };
+  let hfieldRepaint = null;
+
+  /* 在照片里自动挑两块：相邻像素差最小 = 最平缓（低频），最大 = 最细密（高频）。 */
+  function pickFrequencyRegions(plane, width, height) {
+    const small = downsamplePlaneBy2(plane, width, height);
+    const span = Math.min(small.width, small.height);
+    const win = Math.max(8, Math.round(span / 10));
+    const step = Math.max(2, Math.round(win / 4));
+    const scaleX = width / small.width;
+    const scaleY = height / small.height;
+    const records = [];
+    for (let y = 0; y + win <= small.height; y += step) {
+      for (let x = 0; x + win <= small.width; x += step) {
+        const stats = regionStats(small.plane, small.width, x, y, win);
+        // 纯黑 / 纯白角落虽然最平，但没有信息量，跳过
+        if (stats.mean < 24 || stats.mean > 231) continue;
+        records.push({ x: x, y: y, activity: stats.activity, mean: stats.mean, peak: stats.peak });
+      }
+    }
+    if (!records.length) records.push({ x: 0, y: 0, activity: 0, mean: 128, peak: 0 });
+    records.sort(function (a, b) { return a.activity - b.activity; });
+    // 最平缓的 25% 里挑起伏最明显的一块：是“缓坡”，而不是一块死板
+    const poolSize = Math.max(1, Math.round(records.length * 0.25));
+    let calmest = records[0];
+    for (let i = 0; i < poolSize; i++) {
+      if (records[i].peak > calmest.peak) calmest = records[i];
+    }
+    let busiest = records[records.length - 1];
+    for (let i = records.length - 1; i >= 0; i--) {
+      const record = records[i];
+      const apart = record.x + win <= calmest.x || calmest.x + win <= record.x ||
+        record.y + win <= calmest.y || calmest.y + win <= record.y;
+      if (apart) { busiest = record; break; }
+    }
+    const toRegion = function (record) {
+      const sizeX = Math.round(win * scaleX);
+      const sizeY = Math.round(win * scaleY);
+      const size = Math.max(8, Math.min(sizeX, sizeY));
+      return {
+        x: clamp(Math.round(record.x * scaleX), 0, Math.max(0, width - size)),
+        y: clamp(Math.round(record.y * scaleY), 0, Math.max(0, height - size)),
+        size: size,
+        activity: record.activity,
+        mean: record.mean
+      };
+    };
+    return { low: toRegion(calmest), high: toRegion(busiest) };
+  }
+
+  function downsamplePlaneBy2(plane, width, height) {
+    const halfWidth = Math.max(1, width >> 1);
+    const halfHeight = Math.max(1, height >> 1);
+    const output = new Float64Array(halfWidth * halfHeight);
+    for (let y = 0; y < halfHeight; y++) {
+      const rowA = Math.min(height - 1, y * 2) * width;
+      const rowB = Math.min(height - 1, y * 2 + 1) * width;
+      for (let x = 0; x < halfWidth; x++) {
+        const left = Math.min(width - 1, x * 2);
+        const right = Math.min(width - 1, x * 2 + 1);
+        output[y * halfWidth + x] =
+          (plane[rowA + left] + plane[rowA + right] + plane[rowB + left] + plane[rowB + right]) / 4;
+      }
+    }
+    return { plane: output, width: halfWidth, height: halfHeight };
+  }
+
+  function regionStats(plane, width, x, y, size) {
+    let sum = 0;
+    let diff = 0;
+    let count = 0;
+    let minimum = 255;
+    let maximum = 0;
+    for (let row = 0; row < size; row++) {
+      const base = (y + row) * width + x;
+      let previous = plane[base];
+      sum += previous;
+      if (previous < minimum) minimum = previous;
+      if (previous > maximum) maximum = previous;
+      for (let col = 1; col < size; col++) {
+        const value = plane[base + col];
+        sum += value;
+        if (value < minimum) minimum = value;
+        if (value > maximum) maximum = value;
+        diff += Math.abs(value - previous);
+        previous = value;
+        count++;
+      }
+      if (row > 0) {
+        const above = (y + row - 1) * width + x;
+        for (let col = 0; col < size; col++) {
+          diff += Math.abs(plane[base + col] - plane[above + col]);
+        }
+        count += size;
+      }
+    }
+    return {
+      mean: sum / (size * size),
+      activity: diff / Math.max(1, count),
+      peak: maximum - minimum
+    };
+  }
+
+  /* 把一块矩形区域重采样成 n×n 高度场，同时统计峰谷差与相邻差（“变化得多快”）。 */
+  function sampleRegionField(plane, width, height, region, sampleSize) {
+    const n = sampleSize;
+    const values = new Float64Array(n * n);
+    const span = Math.max(1, region.size - 1);
+    for (let j = 0; j < n; j++) {
+      const y = clamp(region.y + Math.round(j * span / (n - 1)), 0, height - 1);
+      for (let i = 0; i < n; i++) {
+        const x = clamp(region.x + Math.round(i * span / (n - 1)), 0, width - 1);
+        values[j * n + i] = plane[y * width + x];
+      }
+    }
+    return summarizeField(values, n);
+  }
+
+  /* 人造棋盘格高度场：cells×cells 个格子，每格再细分 sub 个采样点。 */
+  function checkerField(cells, sub) {
+    const n = cells * sub + 1;
+    const values = new Float64Array(n * n);
+    for (let j = 0; j < n; j++) {
+      const gy = Math.min(cells - 1, Math.floor(j / sub));
+      for (let i = 0; i < n; i++) {
+        const gx = Math.min(cells - 1, Math.floor(i / sub));
+        values[j * n + i] = (gx + gy) % 2 === 0 ? 234 : 24;
+      }
+    }
+    return summarizeField(values, n);
+  }
+
+  function summarizeField(values, n) {
+    let minimum = Infinity;
+    let maximum = -Infinity;
+    let sum = 0;
+    let diff = 0;
+    let count = 0;
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        const value = values[j * n + i];
+        if (value < minimum) minimum = value;
+        if (value > maximum) maximum = value;
+        sum += value;
+        if (i > 0) { diff += Math.abs(value - values[j * n + i - 1]); count++; }
+        if (j > 0) { diff += Math.abs(value - values[(j - 1) * n + i]); count++; }
+      }
+    }
+    return {
+      size: n,
+      values: values,
+      min: minimum,
+      max: maximum,
+      peak: maximum - minimum,
+      mean: sum / (n * n),
+      activity: diff / Math.max(1, count)
+    };
+  }
+
+  function frequencySolidFields(data) {
+    if (data.solidFields) return data.solidFields;
+    const regions = pickFrequencyRegions(data.planes.y, state.width, state.height);
+    data.solidFields = {
+      regions: regions,
+      photoLow: sampleRegionField(data.planes.y, state.width, state.height, regions.low, 41),
+      photoHigh: sampleRegionField(data.planes.y, state.width, state.height, regions.high, 41),
+      checkerLow: checkerField(3, 15),
+      checkerHigh: checkerField(24, 2)
+    };
+    return data.solidFields;
+  }
+
+  function renderFrequencySolidHTML(data) {
+    const fields = frequencySolidFields(data);
+    const regions = fields.regions;
+    const describe = function (field) {
+      return '相邻像素差 ' + field.activity.toFixed(1) + '，峰谷差 ' + Math.round(field.peak) + '（0–255）';
+    };
+    const boxSize = regions.low.size + '×' + regions.low.size;
+    return '<div class="hvs-block" id="hvsSolidBlock">' +
+      '<div class="hvs-head">④ 立体看频率<span>把亮度当高度：低频是缓坡和大台阶，高频是密密麻麻的锯齿</span>' +
+      '<div class="hvs-pager">' +
+      '<button type="button" data-freq-page="0" class="on">第 1 页 · 棋盘格</button>' +
+      '<button type="button" data-freq-page="1">第 2 页 · 你的照片</button>' +
+      '</div></div>' +
+      '<div class="hvs-page" data-freq-view="0">' +
+      '<div class="grid-2">' +
+      figure('hvsSolidCheckerLow', '从粗棋盘格里抠出 3×3 格（132×132）：九块大台地<br><span class="ok">周期 44 像素 · 低频</span>', 'hvs-solid') +
+      figure('hvsSolidCheckerHigh', '从细棋盘格里抠出 24×24 格（96×96）：密集锯齿<br><span class="warn">周期 4 像素 · 高频</span>', 'hvs-solid') +
+      '</div>' +
+      '<div class="hvs-conclusion">两块棋盘格的峰谷差一样大（都是 ' + Math.round(fields.checkerLow.peak) + ' 上下），差别只在“变化得多快”：相邻像素差 ' +
+      fields.checkerLow.activity.toFixed(1) + ' vs ' + fields.checkerHigh.activity.toFixed(1) +
+      '。人眼跟得上缓坡大台阶、跟不上密密锯齿——所以敢删高频系数</div>' +
+      '<div class="hvs-hint">按住任意一幅拖动，所有三维视角一起旋转</div>' +
+      '</div>' +
+      '<div class="hvs-page" data-freq-view="1" hidden>' +
+      '<div class="grid-3">' +
+      figure('hvsRegionMap', '照片上自动挑出两块：<span style="color:#1d4ed8">蓝框</span>最平缓，<span style="color:#c2410c">橙框</span>最细密', 'hvs-solid') +
+      figure('hvsSolidPhotoLow', '低频区 ' + boxSize + ' 像素<br><span class="ok">' + describe(fields.photoLow) + '</span>', 'hvs-solid') +
+      figure('hvsSolidPhotoHigh', '高频区 ' + boxSize + ' 像素<br><span class="warn">' + describe(fields.photoHigh) + '</span>', 'hvs-solid') +
+      '</div>' +
+      '<div class="hvs-conclusion">同一把尺子（z 轴 0–255）下：低频区相邻像素差只有 ' +
+      fields.photoLow.activity.toFixed(1) + '，是缓坡；高频区 ' + fields.photoHigh.activity.toFixed(1) +
+      '，是密密的锯齿。人眼跟得上坡、跟不上锯齿——所以量化敢把高频系数大量置零</div>' +
+      '<div class="hvs-hint">按住任意一幅拖动，所有三维视角一起旋转</div>' +
+      '</div>' +
+      '</div>';
+  }
+
+  /* 两页切换：只切显示，不重绘，页面不会跳 */
+  function bindFrequencyPager() {
+    const block = document.getElementById('hvsSolidBlock');
+    if (!block) return;
+    const buttons = block.querySelectorAll('.hvs-pager button');
+    const pages = block.querySelectorAll('.hvs-page');
+    Array.prototype.forEach.call(buttons, function (button) {
+      button.addEventListener('click', function () {
+        const page = button.getAttribute('data-freq-page');
+        Array.prototype.forEach.call(buttons, function (item) {
+          item.classList.toggle('on', item === button);
+        });
+        Array.prototype.forEach.call(pages, function (item) {
+          item.hidden = item.getAttribute('data-freq-view') !== page;
+        });
+      });
+    });
+  }
+
+  function paintFrequencySolid(data) {
+    const fields = frequencySolidFields(data);
+    hfieldRepaint = function () {
+      drawHeightField3D(setupCanvas('hvsSolidCheckerLow', 460, 380), fields.checkerLow);
+      drawHeightField3D(setupCanvas('hvsSolidCheckerHigh', 460, 380), fields.checkerHigh);
+      drawHeightField3D(setupCanvas('hvsSolidPhotoLow', 330, 285), fields.photoLow);
+      drawHeightField3D(setupCanvas('hvsSolidPhotoHigh', 330, 285), fields.photoHigh);
+    };
+    hfieldRepaint();
+    drawRegionMapInto(setupCanvas('hvsRegionMap', 330, 285), data.planes.y, state.width, state.height, fields.regions);
+    ['hvsSolidCheckerLow', 'hvsSolidCheckerHigh', 'hvsSolidPhotoLow', 'hvsSolidPhotoHigh']
+      .forEach(function (id) { bindHeightFieldDrag(document.getElementById(id)); });
+    bindFrequencyPager();
+  }
+
+  /* 等轴测投影 + 由远及近排序的画家算法，纯 2D 上下文画高度场。 */
+  function drawHeightField3D(target, field) {
+    if (!target || !field) return;
+    const context = target.ctx;
+    const width = target.w;
+    const height = target.h;
+    const azimuth = HFIELD_VIEW.azimuth;
+    const elevation = HFIELD_VIEW.elevation;
+    const cosAz = Math.cos(azimuth);
+    const sinAz = Math.sin(azimuth);
+    const sinEl = Math.sin(elevation);
+    const cosEl = Math.cos(elevation);
+    const scale = Math.min((width - 26) / 2.9, (height - 46) / 2.3);
+    const centerX = width / 2;
+    const centerY = height * 0.55;
+    const zAmp = 0.56;
+    const n = field.size;
+    const last = Math.max(1, n - 1);
+
+    context.clearRect(0, 0, width, height);
+
+    function project(u, v, z) {
+      const a = u * cosAz - v * sinAz;
+      const b = u * sinAz + v * cosAz;
+      return {
+        x: centerX + a * scale,
+        y: centerY + (b * sinEl - z * cosEl) * scale,
+        depth: b
+      };
+    }
+
+    /* 底面参考框：高度有参照物才看得出“立起来” */
+    const baseZ = -zAmp;
+    const corners = [
+      project(-1, -1, baseZ), project(1, -1, baseZ), project(1, 1, baseZ), project(-1, 1, baseZ)
+    ];
+    context.save();
+    context.strokeStyle = 'rgba(148,163,184,0.8)';
+    context.lineWidth = 1;
+    context.setLineDash([4, 3]);
+    context.beginPath();
+    context.moveTo(corners[0].x, corners[0].y);
+    for (let i = 1; i < corners.length; i++) context.lineTo(corners[i].x, corners[i].y);
+    context.closePath();
+    context.stroke();
+    context.setLineDash([]);
+    context.restore();
+
+    const points = new Array(n * n);
+    for (let j = 0; j < n; j++) {
+      const v = j / last * 2 - 1;
+      for (let i = 0; i < n; i++) {
+        const u = i / last * 2 - 1;
+        const z = clamp((field.values[j * n + i] - 128) / 128, -1, 1) * zAmp;
+        points[j * n + i] = project(u, v, z);
+      }
+    }
+
+    const quads = [];
+    for (let j = 0; j < last; j++) {
+      for (let i = 0; i < last; i++) {
+        const p0 = points[j * n + i];
+        const p1 = points[j * n + i + 1];
+        const p2 = points[(j + 1) * n + i + 1];
+        const p3 = points[(j + 1) * n + i];
+        quads.push({
+          i: i, j: j, p0: p0, p1: p1, p2: p2, p3: p3,
+          depth: (p0.depth + p1.depth + p2.depth + p3.depth) / 4
+        });
+      }
+    }
+    quads.sort(function (p, q) { return p.depth - q.depth; });
+
+    const lightX = -0.42;
+    const lightY = -0.66;
+    const lightZ = 0.62;
+    const showGrid = scale * 2 / last >= 1.6;
+    for (let index = 0; index < quads.length; index++) {
+      const quad = quads[index];
+      const i = quad.i;
+      const j = quad.j;
+      const h00 = field.values[j * n + i];
+      const h10 = field.values[j * n + i + 1];
+      const h01 = field.values[(j + 1) * n + i];
+      const h11 = field.values[(j + 1) * n + i + 1];
+      const slopeX = (h10 + h11 - h00 - h01) / 510 * 3;
+      const slopeY = (h01 + h11 - h00 - h10) / 510 * 3;
+      const normal = Math.sqrt(slopeX * slopeX + slopeY * slopeY + 1);
+      const lambert = clamp((-slopeX * lightX - slopeY * lightY + lightZ) / normal, 0, 1);
+      const luma = (h00 + h10 + h01 + h11) / 4;
+      const tone = Math.round(clamp((34 + luma / 255 * 216) * (0.58 + 0.42 * lambert), 0, 255));
+      context.beginPath();
+      context.moveTo(quad.p0.x, quad.p0.y);
+      context.lineTo(quad.p1.x, quad.p1.y);
+      context.lineTo(quad.p2.x, quad.p2.y);
+      context.lineTo(quad.p3.x, quad.p3.y);
+      context.closePath();
+      context.fillStyle = 'rgb(' + tone + ',' + (tone + 2) + ',' + Math.min(255, tone + 8) + ')';
+      context.fill();
+      if (showGrid) {
+        context.strokeStyle = 'rgba(15,23,42,0.15)';
+        context.lineWidth = 0.5;
+        context.stroke();
+      }
+    }
+
+    /* 高度标尺：固定在画布左侧，任何视角都不会被曲面挡住 */
+    const rulerX = 11;
+    const rulerTop = height * 0.30;
+    const rulerBottom = height * 0.72;
+    context.strokeStyle = 'rgba(100,116,139,0.75)';
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(rulerX, rulerBottom);
+    context.lineTo(rulerX, rulerTop);
+    context.stroke();
+    context.beginPath();
+    context.moveTo(rulerX, rulerTop);
+    context.lineTo(rulerX - 3, rulerTop + 6);
+    context.lineTo(rulerX + 3, rulerTop + 6);
+    context.closePath();
+    context.fillStyle = 'rgba(100,116,139,0.75)';
+    context.fill();
+    context.font = '9.5px "Microsoft YaHei", sans-serif';
+    context.textAlign = 'left';
+    context.textBaseline = 'middle';
+    context.fillStyle = '#94a3b8';
+    context.fillText('亮', rulerX + 5, rulerTop + 2);
+    context.fillText('暗', rulerX + 5, rulerBottom - 2);
+
+    context.textBaseline = 'alphabetic';
+    context.fillStyle = '#64748b';
+    context.font = '600 10.5px "Microsoft YaHei", sans-serif';
+    context.fillText('z = 亮度', 10, 18);
+    context.font = '10px Consolas, monospace';
+    context.fillStyle = '#94a3b8';
+    context.fillText('峰谷差 ' + Math.round(field.peak) + ' / 255', 10, 32);
+  }
+
+  function drawRegionMapInto(target, plane, width, height, regions) {
+    if (!target) return;
+    const context = target.ctx;
+    context.clearRect(0, 0, target.w, target.h);
+    const scale = Math.min(target.w / width, target.h / height);
+    const drawWidth = width * scale;
+    const drawHeight = height * scale;
+    const offsetX = (target.w - drawWidth) / 2;
+    const offsetY = (target.h - drawHeight) / 2;
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width = width;
+    offscreen.height = height;
+    const offContext = offscreen.getContext('2d');
+    const imageData = offContext.createImageData(width, height);
+    for (let i = 0; i < width * height; i++) {
+      const value = clamp(Math.round(plane[i]), 0, 255);
+      imageData.data[i * 4] = value;
+      imageData.data[i * 4 + 1] = value;
+      imageData.data[i * 4 + 2] = value;
+      imageData.data[i * 4 + 3] = 255;
+    }
+    offContext.putImageData(imageData, 0, 0);
+    context.fillStyle = '#0f172a';
+    context.fillRect(0, 0, target.w, target.h);
+    context.drawImage(offscreen, offsetX, offsetY, drawWidth, drawHeight);
+
+    const marks = [[regions.low, '#1d4ed8', '低频'], [regions.high, '#c2410c', '高频']];
+    context.lineWidth = 2;
+    context.font = '600 10.5px "Microsoft YaHei", sans-serif';
+    context.textAlign = 'left';
+    context.textBaseline = 'alphabetic';
+    marks.forEach(function (mark) {
+      const region = mark[0];
+      const x = offsetX + region.x * scale;
+      const y = offsetY + region.y * scale;
+      const size = region.size * scale;
+      context.strokeStyle = mark[1];
+      context.strokeRect(x, y, size, size);
+      const labelY = y > 14 ? y - 4 : y + size + 12;
+      context.fillStyle = mark[1];
+      context.fillText(mark[2], x, labelY);
+    });
+  }
+
+  function bindHeightFieldDrag(canvas) {
+    if (!canvas || canvas.dataset.hfieldBound === '1') return;
+    canvas.dataset.hfieldBound = '1';
+    canvas.style.cursor = 'grab';
+    canvas.style.touchAction = 'none';
+    let drag = null;
+    canvas.addEventListener('pointerdown', function (event) {
+      drag = {
+        x: event.clientX,
+        y: event.clientY,
+        azimuth: HFIELD_VIEW.azimuth,
+        elevation: HFIELD_VIEW.elevation
+      };
+      try { canvas.setPointerCapture(event.pointerId); } catch (error) { /* 不支持指针捕获时忽略 */ }
+      canvas.style.cursor = 'grabbing';
+    });
+    canvas.addEventListener('pointermove', function (event) {
+      if (!drag) return;
+      HFIELD_VIEW.azimuth = drag.azimuth + (event.clientX - drag.x) * 0.011;
+      HFIELD_VIEW.elevation = clamp(drag.elevation + (event.clientY - drag.y) * 0.007, 0.22, 1.3);
+      if (hfieldRepaint) hfieldRepaint();
+    });
+    function release() {
+      if (!drag) return;
+      drag = null;
+      canvas.style.cursor = 'grab';
+    }
+    canvas.addEventListener('pointerup', release);
+    canvas.addEventListener('pointercancel', release);
+  }
+
   const RENDERERS = [
     renderSourceStep, renderColorStep, renderSubsampleStep, renderBlockStep,
     renderDctStep, renderQuantStep, renderZigzagStep, renderRleStep,
     renderHuffmanStep, renderBitstreamStep, renderDecEntropyStep,
     renderDequantStep, renderIdctStep, renderRecolorStep,
-    renderVisualLumaStep, renderVisualLumaCompareStep, renderVisualFreqStep
+    renderVisualLumaStep, renderVisualFreqStep
   ];
 
   /* ------------------------------------------------------------------ */
@@ -4749,8 +5068,8 @@
   /* ------------------------------------------------------------------ */
 
   const FLOW_CHAPTERS = [
-    { id: 'luma', short: '亮度与色度', title: '亮度与色度：人眼更依赖亮度', steps: [14, 15] },
-    { id: 'freq', short: '低频与高频', title: '低频与高频：人眼靠低频认物体', steps: [16] },
+    { id: 'luma', short: '亮度与色度', title: '亮度与色度：人眼更依赖亮度', steps: [14] },
+    { id: 'freq', short: '低频与高频', title: '低频与高频：人眼靠低频认物体', steps: [15] },
     { id: 'input', short: '输入解码', title: '输入：从 JPG 解码出 RGB', steps: [0] },
     { id: 'prep', short: '编码准备', title: '编码准备：YCbCr、色度采样与分块', steps: [1, 2, 3] },
     { id: 'dct', short: 'DCT', title: 'DCT：把 8×8 块换成 64 个余弦权重', steps: [4, 4, 4, 4, 4] },

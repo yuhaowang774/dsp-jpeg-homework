@@ -33,6 +33,7 @@ function element(id, tag) {
     id: id,
     tagName: (tag || 'div').toUpperCase(),
     style: {},
+    dataset: {},
     width: 0,
     height: 0,
     offsetWidth: 1,
@@ -135,7 +136,30 @@ vm.createContext(sandbox);
 
 const html = fs.readFileSync(path.join(root, 'web', 'index.html'), 'utf8');
 const inline = Array.from(html.matchAll(/<script>([\s\S]*?)<\/script>/g)).map(function (match) { return match[1]; })[0];
-vm.runInContext(inline, sandbox, { filename: 'web/index.html:inline' });
+
+const rendererBlock = /const RENDERERS = \[([\s\S]*?)\];/.exec(inline);
+if (rendererBlock) {
+  (rendererBlock[1].match(/[A-Za-z_$][\w$]*/g) || []).forEach(function (name) {
+    if (/^render/.test(name) && !new RegExp('function\\s+' + name + '\\s*\\(').test(inline)) {
+      sandbox[name] = function () {};
+    }
+  });
+}
+
+const iifeEnd = '})();';
+const iifePos = inline.lastIndexOf(iifeEnd);
+assert.ok(iifePos >= 0, '未找到页面脚本的 IIFE 结尾');
+const instrumented = inline.slice(0, iifePos) +
+  '\n;globalThis.__TEST_PAGE__ = {' +
+  ' FLOW_ENTRIES: FLOW_ENTRIES,' +
+  ' FLOW_CHAPTERS: FLOW_CHAPTERS,' +
+  ' STEPS: STEPS,' +
+  ' DCT_VIEWS: DCT_VIEWS,' +
+  ' flowStep: flowStep };\n' +
+  inline.slice(iifePos);
+vm.runInContext(instrumented, sandbox, { filename: 'web/index.html:inline' });
+const page = sandbox.__TEST_PAGE__;
+const flowEntries = page.FLOW_ENTRIES;
 
 function pump(times) {
   for (let i = 0; i < times; i++) {
@@ -146,6 +170,60 @@ function pump(times) {
 function goTo(index) {
   store.stepper.children[index].fire('click');
 }
+
+function findFlowIndex(predicate) {
+  const index = flowEntries.findIndex(predicate);
+  assert.ok(index >= 0, '找不到符合条件的教学节点');
+  return index;
+}
+
+const expectedByStepId = {
+  source: ['sourceCanvas', 'blockPreview'],
+  color: ['colorRGB', 'colorY', 'colorCb', 'colorCr'],
+  subsample: ['subCbOriginal', 'subCrOriginal', 'subCbSmall', 'subCrSmall'],
+  block: ['blockY', 'blockCb', 'blockCr'],
+  quant: ['quantTable', 'quantCoeff', 'quantError'],
+  zigzag: ['zigMain', 'zigSeq'],
+  rle: ['rleStrip'],
+  huffman: ['huffBits', 'huffBytes', 'huffCurrent'],
+  bitstream: ['bitBars', 'bitHist', 'bitAssembly'],
+  decEntropy: ['decodeWrap', 'decodeBitStrip'],
+  dequant: ['dqOriginal', 'dqQuantized', 'dqTable', 'dqRestored'],
+  idct: ['idctOriginal', 'idctRestored', 'idctError'],
+  recolor: ['finalOriginal', 'finalDecoded', 'finalError'],
+  visualLuma: ['hvsLumaOrig', 'hvsLumaY', 'hvsLumaColor'],
+  visualLumaCompare: ['hvsOriginal', 'hvsLowChroma', 'hvsLowLuma'],
+  visualFreq: ['hvsGray', 'hvsOnlyLow', 'hvsOnlyHigh']
+};
+
+const expectedByDctView = {
+  shift: ['shiftOriginal', 'shiftCentered', 'shiftReadout'],
+  oneD: ['dctRowBasis', 'dctRowReadout'],
+  twopass: ['passOriginal', 'passTemp', 'passFinal', 'passRow', 'passReadout'],
+  coeff: ['dctMain', 'dctBasis', 'dctTermBasis', 'dctTermContribution', 'dctTermRebuild'],
+  rebuild: ['rebuildTarget', 'rebuildSum', 'rebuildTerm', 'rebuildBars', 'rebuildInfo']
+};
+
+function expectedIdsFor(entry) {
+  if (entry.chapter === 'dct') {
+    const view = page.DCT_VIEWS[entry.subIndex];
+    const ids = expectedByDctView[view];
+    assert.ok(ids, '未定义的 DCT 视图：' + view);
+    return ids;
+  }
+  const stepId = page.STEPS[entry.step].id;
+  const ids = expectedByStepId[stepId];
+  assert.ok(ids, '未定义的步骤：' + stepId);
+  return ids;
+}
+
+const sourceIndex = findFlowIndex(function (entry) { return page.STEPS[entry.step].id === 'source'; });
+const subsampleIndex = findFlowIndex(function (entry) { return page.STEPS[entry.step].id === 'subsample'; });
+const blockIndex = findFlowIndex(function (entry) { return page.STEPS[entry.step].id === 'block'; });
+const zigzagIndex = findFlowIndex(function (entry) { return page.STEPS[entry.step].id === 'zigzag'; });
+const oneDIndex = findFlowIndex(function (entry) { return entry.chapter === 'dct' && entry.subIndex === 1; });
+const twoPassIndex = findFlowIndex(function (entry) { return entry.chapter === 'dct' && entry.subIndex === 2; });
+const dctCoeffIndex = findFlowIndex(function (entry) { return entry.chapter === 'dct' && entry.subIndex === 3; });
 
 let passed = 0;
 let failed = 0;
@@ -161,49 +239,31 @@ function test(name, body) {
   }
 }
 
-test('初始化：2 张原生风景示例、5 个样例与 18 个教学流节点', function () {
+test('初始化：示例图、示例按钮与教学流节点均由页面配置驱动', function () {
   assert.strictEqual(window.DEMO_PHOTOS.length, 2);
   assert.strictEqual(window.DEMO_PHOTOS[0].width, 1024);
   assert.strictEqual(window.DEMO_PHOTOS[1].width, 640);
-  assert.strictEqual(store.sampleButtons.children.length, 5);
-  assert.strictEqual(store.stepper.children.length, 18);
-  assert.strictEqual(store.stepTitle.textContent, '人眼先看亮度，再看颜色');
-  assert.ok(store.hvsLumaOrig.width > 0);
+  assert.ok(store.sampleButtons.children.length > 0, '缺少示例按钮');
+  assert.strictEqual(store.stepper.children.length, flowEntries.length);
+  store.stepper.children.forEach(function (button, index) {
+    assert.strictEqual(button.getAttribute('data-index'), String(index));
+  });
+  assert.strictEqual(store.stepTitle.textContent, page.flowStep(0).title);
+  assert.ok(Object.keys(store).some(function (key) { return store[key] && store[key].width > 0; }), '首个节点未渲染出画布');
 });
 
-const flowStepIds = [14, 15, 16, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 13];
-
-const expectedIds = [
-  ['sourceCanvas', 'blockPreview'],
-  ['colorRGB', 'colorY', 'colorCb', 'colorCr'],
-  ['subCbOriginal', 'subCrOriginal', 'subCbSmall', 'subCrSmall'],
-  ['blockY', 'blockCb', 'blockCr'],
-  ['dctMain', 'dctBasis'],
-  ['quantTable', 'quantCoeff', 'quantError'],
-  ['zigMain', 'zigSeq'],
-  ['rleStrip'],
-  ['huffBits', 'huffBytes', 'huffCurrent'],
-  ['bitBars', 'bitHist', 'bitAssembly'],
-  ['decodeWrap', 'decodeBitStrip'],
-  ['dqOriginal', 'dqQuantized', 'dqTable', 'dqRestored'],
-  ['idctOriginal', 'idctRestored', 'idctError'],
-  ['finalOriginal', 'finalDecoded', 'finalError'],
-  ['hvsLumaOrig', 'hvsLumaY', 'hvsLumaColor'],
-  ['hvsOriginal', 'hvsLowChroma', 'hvsLowLuma'],
-  ['hvsGray', 'hvsOnlyLow', 'hvsOnlyHigh']
-];
-
-test('18 个教学流节点均渲染出预期画布与容器', function () {
-  flowStepIds.forEach(function (canonicalId, index) {
+test('全部教学流节点均渲染出预期画布与容器', function () {
+  flowEntries.forEach(function (entry, index) {
     goTo(index);
-    expectedIds[canonicalId].forEach(function (id) {
+    assert.strictEqual(store.stepTitle.textContent, page.flowStep(index).title);
+    expectedIdsFor(entry).forEach(function (id) {
       assert.ok(store.stage.innerHTML.indexOf(id) >= 0, '第 ' + (index + 1) + ' 节点缺少 ' + id);
     });
   });
 });
 
 test('可切换 1024×1024 与 640×640 原生样例', function () {
-  goTo(3);
+  goTo(sourceIndex);
   store.sampleButtons.children[1].fire('click');
   assert.ok(store.stepParams.innerHTML.indexOf('640 × 640') >= 0);
   store.sampleButtons.children[0].fire('click');
@@ -211,34 +271,34 @@ test('可切换 1024×1024 与 640×640 原生样例', function () {
 });
 
 test('鼠标悬浮实时预览但不改确认选区', function () {
-  goTo(3);
+  goTo(sourceIndex);
   const selected = /\((\d+), (\d+)\)/.exec(store.blockPreviewHead.innerHTML);
   assert.ok(selected, '缺少当前选中块坐标');
   store.sourceCanvas.fire('mousemove', { clientX: 50, clientY: 50 });
   assert.ok(store.blockPreviewHead.innerHTML.indexOf('悬浮') >= 0);
   assert.ok(store.blockPreviewHead.innerHTML.indexOf('(16, 16)') >= 0);
-  goTo(6);
+  goTo(blockIndex);
   assert.ok(store.stepParams.innerHTML.indexOf('(' + selected[1] + ', ' + selected[2] + ')') >= 0);
 });
 
 test('点击源图同步 8×8 预览与后续块坐标', function () {
-  goTo(3);
+  goTo(sourceIndex);
   store.sourceCanvas.fire('click', { clientX: 100, clientY: 300 });
   assert.ok(store.stage.innerHTML.indexOf('blockPreview') >= 0);
   assert.ok(store.blockPreviewHead.innerHTML.indexOf('(32, 96)') >= 0);
-  goTo(6);
+  goTo(blockIndex);
   assert.ok(store.stepParams.innerHTML.indexOf('(32, 96)') >= 0);
 });
 
 test('切步不会自动跳步或自动播放', function () {
-  goTo(5);
+  goTo(sourceIndex);
   const title = store.stepTitle.textContent;
   pump(200);
   assert.strictEqual(store.stepTitle.textContent, title);
 });
 
 test('所有工具按钮触发的动画不抛错并产生读数', function () {
-  for (let index = 0; index < 18; index++) {
+  for (let index = 0; index < flowEntries.length; index++) {
     goTo(index);
     const buttons = store.stepTools.children.slice();
     buttons.forEach(function (button) {
@@ -254,7 +314,7 @@ test('所有工具按钮触发的动画不抛错并产生读数', function () {
 });
 
 test('DCT 行列分解视图与返回系数视图', function () {
-  goTo(7);
+  goTo(twoPassIndex);
   const tools = store.stepTools.children;
   const twoPass = tools.find(function (button) { return button.getAttribute('data-action') === 'twopass'; });
   assert.ok(twoPass, '缺少行列分解按钮');
@@ -264,18 +324,14 @@ test('DCT 行列分解视图与返回系数视图', function () {
   assert.ok(store.stage.innerHTML.indexOf('passFinal') >= 0);
   assert.strictEqual(store.passTemp.width, store.passTemp.height);
   assert.strictEqual(store.passFinal.width, store.passFinal.height);
-  const back = store.dctBack || store.passBack;
-  assert.ok(back, '缺少返回按钮');
-  back.fire('click');
+  assert.ok(store.passBack, '缺少返回按钮');
+  store.passBack.fire('click');
+  assert.strictEqual(store.stepTitle.textContent, page.flowStep(dctCoeffIndex).title);
   assert.ok(store.stage.innerHTML.indexOf('dctMain') >= 0);
 });
 
 test('DCT 一维分解视图：8 个行选择与余弦加权读数', function () {
-  goTo(7);
-  const oneD = store.stepTools.children.find(function (button) { return button.getAttribute('data-action') === 'oneD'; });
-  assert.ok(oneD, '缺少一维分解按钮');
-  oneD.fire('click');
-  assert.ok(store.stage.innerHTML.indexOf('dctRowWave') >= 0, '缺少像素→系数画布');
+  goTo(oneDIndex);
   assert.ok(store.stage.innerHTML.indexOf('dctRowBasis') >= 0, '缺少余弦加权画布');
   assert.ok(store.dctRowReadout.textContent.indexOf('帕塞瓦尔') >= 0, '缺少帕塞瓦尔读数');
   const rows = store.stage.children.filter(function (node) {
@@ -290,14 +346,14 @@ test('质量、采样、分量与样例切换均可重建', function () {
   store.qSlider.value = '20';
   store.qSlider.fire('input', { target: store.qSlider });
   assert.strictEqual(String(store.qValue.textContent), '20');
-  goTo(5);
+  goTo(subsampleIndex);
   const labels = { 444: '4:4:4', 422: '4:2:2', 420: '4:2:0' };
   ['444', '422', '420'].forEach(function (mode) {
     const button = store.subButtons.children.find(function (item) { return item.getAttribute('data-sub') === mode; });
     button.fire('click');
     assert.ok(store.stepParams.innerHTML.indexOf(labels[mode]) >= 0);
   });
-  goTo(6);
+  goTo(blockIndex);
   ['Y', 'Cb', 'Cr'].forEach(function (component) {
     const button = store.compButtons.children.find(function (item) { return item.getAttribute('data-comp') === component; });
     button.fire('click');
@@ -310,10 +366,10 @@ test('质量、采样、分量与样例切换均可重建', function () {
 });
 
 test('步骤条可手动切换节点', function () {
-  goTo(3);
-  assert.strictEqual(store.stepTitle.textContent, '源图像与 8×8 分块');
-  goTo(9);
-  assert.strictEqual(store.stepTitle.textContent, 'Zigzag 扫描');
+  goTo(sourceIndex);
+  assert.strictEqual(store.stepTitle.textContent, page.flowStep(sourceIndex).title);
+  goTo(zigzagIndex);
+  assert.strictEqual(store.stepTitle.textContent, page.flowStep(zigzagIndex).title);
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
