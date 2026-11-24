@@ -7,9 +7,12 @@
 <title>JPEG 编解码流程实验台</title>
 <style>
   :root{
-    --bg:#e9eef6; --panel:#fff; --line:#d5dfeb; --text:#152033; --muted:#64748b;
+    --bg:#e9eef6; --panel:#fff; --line:#d5dfeb; --text:#152033; --muted:#5a6b83;
     --blue:#1d4ed8; --blue-soft:#e8efff; --teal:#0f766e; --orange:#c2410c;
     --red:#dc2626; --green:#15803d;
+    --surface-soft:#f8fafc; --border-soft:#e6edf6;
+    --shadow-sm:0 1px 2px rgba(15,23,42,.05); --shadow-md:0 5px 16px rgba(15,23,42,.07);
+    --cell-empty:#eef2f7; --cell-blue:#1a589a; --cell-red:#ff4141;
     --ease-standard:cubic-bezier(.22,.61,.36,1);
     --ease-emphasis:cubic-bezier(.34,1.2,.64,1);
     --dur-fast:160ms; --dur-base:260ms; --dur-slow:380ms;
@@ -33,20 +36,21 @@
   .qbox b{min-width:30px;text-align:right;font-variant-numeric:tabular-nums}
   .upload{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 12px;font-size:12.5px;cursor:pointer}
   .upload:hover{border-color:#9fb3cc}
-  .stepper{position:fixed;left:12px;right:12px;bottom:10px;z-index:28;display:flex;gap:6px;overflow-x:auto;padding:6px;background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:12px;scrollbar-width:thin;backdrop-filter:blur(8px)}
-  .stepper button{border:1px solid var(--line);background:#fff;border-radius:20px;padding:5px 10px;font-size:12px;cursor:pointer;white-space:nowrap;color:var(--muted)}
+  .stepper{position:fixed;left:12px;right:12px;bottom:10px;z-index:28;display:flex;gap:6px;overflow-x:auto;padding:7px;background:rgba(255,255,255,.97);border:1px solid var(--line);border-radius:14px;scrollbar-width:thin;backdrop-filter:blur(8px);box-shadow:var(--shadow-md)}
+  .stepper button{border:1px solid transparent;background:transparent;border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;white-space:nowrap;color:var(--muted)}
+  .stepper button:hover{background:var(--surface-soft);border-color:var(--border-soft);color:var(--text)}
   .stepper button .n{font-family:Consolas,monospace;font-weight:700;margin-right:4px;color:#94a3b8}
-  .stepper button.on{background:var(--blue-soft);border-color:#9db8f5;color:var(--blue)}
-  .stepper button.on .n{color:var(--blue)}
-  .main{position:absolute;top:8px;bottom:62px;left:0;right:0;display:grid;grid-template-columns:minmax(270px,25%) minmax(0,1fr);gap:10px;padding:8px 12px 0}
-  .left{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;min-height:0;overflow:auto}
-  .step-kicker{font:600 11px/1 Consolas,monospace;color:var(--blue);letter-spacing:.6px}
-  .left h2{font-size:19px;margin:6px 0 8px}
-  .lead{color:#334155;margin:0 0 12px}
-  .sec{border-top:1px dashed #e2e8f0;padding-top:10px;margin-top:10px}
-  .sec h3{font-size:12.5px;color:var(--muted);margin:0 0 5px;font-weight:600;letter-spacing:.3px}
-  .sec p{margin:0;color:#334155}
-  .formula{background:#f6f8fc;border:1px solid #e3eaf4;border-radius:9px;padding:9px 11px;font:12px/1.65 Consolas,"Cascadia Mono",monospace;color:#1e293b;overflow:auto;white-space:pre;margin:8px 0 0}
+  .stepper button.on{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 2px 7px rgba(29,78,216,.24)}
+  .stepper button.on .n{color:rgba(255,255,255,.75)}
+  .main{position:absolute;top:8px;bottom:62px;left:0;right:0;display:grid;grid-template-columns:minmax(270px,25%) minmax(0,1fr);gap:12px;padding:8px 12px 0}
+  .left{background:linear-gradient(180deg,#fff 0%,#fcfdff 100%);border:1px solid var(--line);border-radius:16px;padding:16px;min-height:0;overflow:auto;box-shadow:var(--shadow-sm)}
+  .step-kicker{font:700 11px/1 Consolas,monospace;color:var(--blue);letter-spacing:.8px}
+  .left h2{font-size:20px;line-height:1.32;letter-spacing:-.2px;margin:6px 0 8px}
+  .lead{color:#334155;font-size:13.5px;line-height:1.7;margin:0 0 12px}
+  .sec{border-top:1px dashed #dfe7f1;padding-top:11px;margin-top:11px}
+  .sec h3{font-size:12.5px;color:var(--muted);margin:0 0 6px;font-weight:700;letter-spacing:.5px}
+  .sec p{margin:0;color:#334155;font-size:13px;line-height:1.68}
+  .formula{background:var(--surface-soft);border:1px solid var(--border-soft);border-radius:9px;padding:9px 11px;font:11.5px/1.65 Consolas,"Cascadia Mono",monospace;color:#1e293b;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:8px 0 0}
   .kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px}
   .kv-grid div{background:#f6f8fc;border:1px solid #e3eaf4;border-radius:8px;padding:6px 8px}
   .kv-grid span{display:block;font-size:11px;color:var(--muted)}
@@ -54,16 +58,23 @@
   ul.tips{margin:4px 0 0;padding-left:18px;color:#334155}
   ul.tips li{margin:3px 0}
   .tools{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-  .tools button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 11px;cursor:pointer;font-size:12.5px}
-  .tools button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  .tools button{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 12px;cursor:pointer;font-size:12.5px}
+  .tools button:hover{border-color:#9db8f5;background:var(--blue-soft);color:var(--blue)}
+  .tools button.primary{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 2px 7px rgba(29,78,216,.22)}
+  .tools button.primary:hover{background:#1a45c4;color:#fff}
   .right{min-width:0;min-height:0;display:flex}
-  .stage{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;min-height:0;height:100%;overflow:auto;flex:1}
+  .stage{background:linear-gradient(180deg,#fff 0%,#fcfdff 100%);border:1px solid var(--line);border-radius:16px;padding:16px;min-height:0;height:100%;overflow:auto;flex:1;box-shadow:var(--shadow-sm);display:flex;flex-direction:column}
+  .stage>*{flex-shrink:0}
+  .stage>:first-child{margin-top:auto}
+  .stage>:last-child{margin-bottom:auto}
   .stage.enter{animation:stageIn var(--dur-slow) var(--ease-standard)}
   @keyframes stageIn{from{opacity:0;transform:translateY(10px) scale(.995)}to{opacity:1;transform:none}}
-  .stage-btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;margin-top:8px}
-  .stage-btn:hover{border-color:#9fb3cc}
-  table.data tr.active{background:#fff1d6}
-  table.data tr.done{color:#94a3b8}
+  .stage-btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 12px;font-size:12px;cursor:pointer;margin-top:8px}
+  .stage-btn:hover{border-color:#9db8f5;background:var(--blue-soft);color:var(--blue)}
+  .stage-btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 2px 7px rgba(29,78,216,.22)}
+  table.data tr.done{color:#8190a6}
+  table.data tbody tr:nth-child(even) td{background:#fafcff}
+  table.data tbody tr.active td{background:#fff1d6}
   .stage-flex{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
   .stage-col{flex:1;min-width:0}
   .dct-2d-top{display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:18px;align-items:start}
@@ -105,39 +116,77 @@
   .color-grid figure{display:flex;flex-direction:column;align-items:center}
   .color-grid canvas{margin:0 auto}
   .color-grid figcaption{text-align:center}
+  .block-context-row{display:flex;gap:18px;align-items:center;margin-top:12px}
+  .block-context-figure{width:160px;flex:0 0 160px}
+  .block-context-figure figcaption{text-align:center;font-size:11.5px;line-height:1.45}
+  .block-context-stats{flex:1;min-width:0}
+  .pixel-example{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;background:var(--surface-soft);border:1px solid var(--border-soft);border-radius:10px;padding:8px 12px;font-size:12px;color:var(--muted)}
+  .pixel-example b{color:var(--text)}
+  .pixel-swatch{width:32px;height:32px;border-radius:8px;border:1px solid rgba(15,23,42,.15);box-shadow:var(--shadow-sm)}
+  .pixel-values{font-family:Consolas,monospace;font-variant-numeric:tabular-nums}
+  .pixel-arrow{color:var(--blue);font-weight:700}
   .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
   .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .sub-sample-row{display:flex;gap:18px;align-items:center;margin-top:12px}
+  .sample-pattern{width:180px;flex:0 0 180px}
+  .sample-pattern figcaption{text-align:center;font-size:11.5px}
+  .sample-pattern-stats{flex:1;min-width:0}
+  .sub-compare{margin-top:18px;padding-top:14px;border-top:1px dashed #e2e8f0}
+  .sub-compare-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px}
+  .sub-compare-head span{font-weight:400;color:var(--muted);font-size:11.5px}
+  .sub-compare figure{display:flex;flex-direction:column;align-items:center}
+  .sub-compare canvas{margin:0 auto}
+  .sub-compare figcaption{text-align:center}
+  .sub-compare .note{margin:9px 0 0;line-height:1.6}
+  .freq-region-row{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start;margin-bottom:14px}
+  .freq-region-row figure{width:100%;max-width:480px}
+  .freq-curves{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .freq-curve-item figure{display:flex;flex-direction:column;align-items:center}
+  .freq-curve-item figcaption{text-align:center}
+  .freq-pairs{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  .freq-pair{display:flex;flex-direction:column;gap:8px;min-width:0}
+  .freq-pair figure{display:flex;flex-direction:column;align-items:center}
+  .freq-pair figure.hvs-solid{height:auto}
+  .freq-pair canvas{margin:0 auto}
+  .freq-pair figcaption{text-align:center;line-height:1.5}
+  .freq-zoom{margin:0;padding:0;border:0;min-width:0}
+  .freq-zoom-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px}
+  .freq-zoom-head span{font-weight:400;color:var(--muted);font-size:11.5px}
+  .freq-zoom-body{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .freq-zoom-side{flex:1;min-width:160px}
+  .freq-zoom-side .note{margin:10px 0 0;line-height:1.65}
+  .hvs-crop canvas{image-rendering:pixelated}
   figure{margin:0}
-  figcaption,.cap{font-size:12px;color:var(--muted);margin:5px 0 0}
-  canvas{display:block;width:100%;border-radius:9px;background:#f8fafc;border:1px solid #edf1f7}
-  .stats{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-  .stats div{background:#f6f8fc;border:1px solid #e3eaf4;border-radius:9px;padding:7px 9px}
-  .stats span{display:block;font-size:11px;color:var(--muted)}
-  .stats b{font-size:14px;font-variant-numeric:tabular-nums}
+  figcaption,.cap{font-size:12.5px;color:#475569;line-height:1.55;margin:6px 0 0}
+  canvas{display:block;width:100%;border-radius:11px;background:var(--surface-soft);border:1px solid var(--border-soft);box-shadow:var(--shadow-sm)}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .stats div{background:linear-gradient(180deg,#fff,#f8fafc);border:1px solid var(--border-soft);border-radius:10px;padding:8px 10px;box-shadow:var(--shadow-sm)}
+  .stats span{display:block;font-size:11.5px;color:var(--muted)}
+  .stats b{font-size:14.5px;font-variant-numeric:tabular-nums}
   .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-  .card{background:#f6f8fc;border:1px solid #e3eaf4;border-radius:10px;padding:10px 12px}
+  .card{background:linear-gradient(180deg,#fff,#f8fafc);border:1px solid var(--border-soft);border-radius:11px;padding:11px 13px;box-shadow:var(--shadow-sm)}
   .card span{display:block;font-size:11.5px;color:var(--muted)}
-  .card b{font-size:20px;font-variant-numeric:tabular-nums}
+  .card b{font-size:20px;letter-spacing:-.3px;font-variant-numeric:tabular-nums}
   .card small{display:block;color:var(--muted);font-size:11px}
   table.data{width:100%;border-collapse:collapse;font-size:12.5px}
-  table.data th{text-align:left;color:var(--muted);font-weight:600;border-bottom:1px solid var(--line);padding:5px 6px;white-space:nowrap}
-  table.data td{padding:5px 6px;border-bottom:1px solid #eef2f7;font-variant-numeric:tabular-nums}
+  table.data th{text-align:left;color:var(--muted);font-weight:700;background:var(--surface-soft);border-bottom:1px solid var(--line);padding:7px 8px;white-space:nowrap}
+  table.data td{padding:7px 8px;border-bottom:1px solid var(--border-soft);font-variant-numeric:tabular-nums}
   table.data code{font-family:Consolas,monospace;color:#1e3a8a}
-  .scroll{max-height:330px;overflow:auto;border:1px solid #e6edf6;border-radius:10px}
-  .bits{font-family:Consolas,"Cascadia Mono",monospace;font-size:12px;line-height:1.75;word-break:break-all;background:#f7f9fc;border:1px solid #e3eaf4;border-radius:9px;padding:8px;max-height:150px;overflow:auto}
+  .scroll{max-height:330px;overflow:auto;border:1px solid var(--border-soft);border-radius:11px}
+  .bits{font-family:Consolas,"Cascadia Mono",monospace;font-size:12px;line-height:1.75;word-break:break-all;background:var(--surface-soft);border:1px solid var(--border-soft);border-radius:10px;padding:9px;max-height:150px;overflow:auto}
   .bits .one{color:var(--blue);font-weight:700}
-  .bits .zero{color:#94a3b8}
+  .bits .zero{color:#8695aa}
   .bits .used{background:#fff1d6}
   .bits .cursor{color:#c2410c;font-weight:700}
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
   .chip{background:#eef3fb;border:1px solid #dbe6f5;border-radius:999px;padding:3px 9px;font-size:11.5px;color:#334155}
-  .note{font-size:12px;color:var(--muted)}
-  .hvs-block{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:14px;background:#fbfcfe}
-  .hvs-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px}
-  .hvs-head span{font-weight:400;color:var(--muted);font-size:11.5px;margin-left:0}
+  .note{font-size:12.5px;line-height:1.7;color:#52627a}
+  .hvs-block{border:1px solid var(--border-soft);border-radius:14px;padding:16px;margin-bottom:14px;background:#fff;box-shadow:var(--shadow-sm)}
+  .hvs-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px}
+  .hvs-head span{font-weight:400;color:#52627a;font-size:12px;margin-left:0}
   .hvs-pager{display:flex;gap:4px;margin-left:auto;flex-shrink:0}
-  .hvs-pager button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 10px;font-size:11.5px;color:var(--muted);cursor:pointer;white-space:nowrap}
-  .hvs-pager button:hover{border-color:#9fb3cc;color:var(--text)}
+  .hvs-pager button{border:1px solid var(--border-soft);background:#fff;border-radius:9px;padding:5px 11px;font-size:11.5px;color:var(--muted);cursor:pointer;white-space:nowrap}
+  .hvs-pager button:hover{border-color:#9db8f5;background:var(--blue-soft);color:var(--blue)}
   .hvs-pager button.on{background:var(--blue-soft);border-color:#9db8f5;color:var(--blue);font-weight:600}
   .hvs-page[hidden]{display:none}
   .hvs-page .hvs-hint{font-size:11.5px;color:var(--muted);text-align:center;margin-top:8px}
@@ -145,13 +194,14 @@
   figure.hvs-solid canvas{margin:0 auto;max-width:100%}
   figure.hvs-solid figcaption{margin-top:8px}
   .hvs-source-row{display:flex;justify-content:center;margin-bottom:10px}
-  .hvs-sliders{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px}
-  .hvs-sliders label{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
-  .hvs-sliders input[type=range]{width:130px}
-  .hvs-blind-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .hvs-sliders output{font-family:Consolas,monospace;font-size:11.5px;font-weight:600;color:var(--text);min-width:64px}
-  .hvs-sliders output.hvs-blind{color:var(--muted);letter-spacing:2px}
-  .hvs-conclusion{border-left:3px solid var(--blue);background:var(--blue-soft);color:#1e3a8a;padding:8px 12px;border-radius:0 8px 8px 0;font-size:12.5px;margin-top:12px}
+  .hvs-diff-row{margin-top:12px}
+  .hvs-diff-row figure{display:flex;flex-direction:column;align-items:center}
+  .hvs-diff-row figcaption{text-align:center}
+  .hvs-sliders{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .hvs-auto-group{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);background:var(--surface-soft);border:1px solid var(--border-soft);border-radius:999px;padding:5px 13px}
+  .hvs-auto-group b{color:var(--text);font-weight:700;font-size:12.5px}
+  .hvs-auto-group output{font-family:Consolas,monospace;font-size:12.5px;font-weight:700;color:var(--blue);min-width:34px;text-align:center;font-variant-numeric:tabular-nums}
+  .hvs-conclusion{border-left:3px solid var(--blue);background:var(--blue-soft);color:#1e3a8a;padding:10px 14px;border-radius:0 9px 9px 0;font-size:13px;line-height:1.6;margin-top:14px}
   .hvs-block figcaption{text-align:center;line-height:1.5}
   .ok{color:var(--green);font-weight:600}
   .warn{color:var(--orange);font-weight:600}
@@ -168,6 +218,9 @@
   .settings-head b{font-size:16px}
   .settings-close{border:1px solid var(--line);background:#fff;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:16px}
   .settings-body .grp{margin-bottom:16px}
+  .left::-webkit-scrollbar,.stage::-webkit-scrollbar,.scroll::-webkit-scrollbar,.stepper::-webkit-scrollbar{width:8px;height:8px}
+  .left::-webkit-scrollbar-thumb,.stage::-webkit-scrollbar-thumb,.scroll::-webkit-scrollbar-thumb,.stepper::-webkit-scrollbar-thumb{background:#cbd7e6;border-radius:8px;border:2px solid transparent;background-clip:content-box}
+  .left::-webkit-scrollbar-thumb:hover,.stage::-webkit-scrollbar-thumb:hover,.scroll::-webkit-scrollbar-thumb:hover,.stepper::-webkit-scrollbar-thumb:hover{background:#a9bbd2;background-clip:content-box}
   @media (max-width:1100px){
     .main{grid-template-columns:1fr;top:8px;bottom:62px}
     .grid-4{grid-template-columns:1fr 1fr}
@@ -178,6 +231,9 @@
     .source-layout{grid-template-columns:1fr}
     .dct-2d-top,.dct-shift-row{grid-template-columns:1fr}
     .dct-term-row,.dct-rebuild-row3{grid-template-columns:1fr}
+    .freq-region-row,.freq-pairs,.freq-curves{grid-template-columns:1fr}
+    .sub-sample-row,.block-context-row{flex-direction:column;align-items:stretch}
+    .sample-pattern,.block-context-figure{width:100%;flex:none;max-width:200px;margin:0 auto}
     .main{top:6px;bottom:58px;padding:6px 8px 0}
     .stepper{bottom:8px}
     .left h2{font-size:16px}
@@ -280,7 +336,8 @@
       assembly: { trigger: '步骤10 拼接按钮', duration: 3600, easing: 'steps', transition: 'MCU 格点顺序点亮' },
       decode: { trigger: '步骤11 熵解码按钮', duration: 3400, easing: 'steps', transition: '符号表行高亮 + 位游标' },
       idct: { trigger: '步骤13 IDCT 按钮', duration: 1280, easing: 'easeOutCubic', transition: '基函数累加 + 误差图更新' },
-      tour: { trigger: '步骤01 扫描块按钮', duration: 7000, easing: 'easeInOutSine', transition: '仅重绘源图高亮层' }
+      tour: { trigger: '步骤01 扫描块按钮', duration: 7000, easing: 'easeInOutSine', transition: '仅重绘源图高亮层' },
+      freqZoom: { trigger: '原理02 整体缩小演示', duration: 4200, easing: 'easeInOutSine', transition: '整幅图等比例缩小到 1/5 再放大回去，高细节随缩小消失' }
     },
     ease: {
       linear: function (t) { return t; },
@@ -371,6 +428,27 @@
 
   function clamp(value, minimum, maximum) {
     return Math.max(minimum, Math.min(maximum, value));
+  }
+
+  /* 画布配色统一从 CSS 变量读取，避免 JS / CSS 两处各写一份色值。 */
+  const rootStyle = getComputedStyle(document.documentElement);
+  function cssRGB(name) {
+    const hex = rootStyle.getPropertyValue(name).trim();
+    return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+  }
+  const DARK_TEXT = rootStyle.getPropertyValue('--text').trim();
+  const RGB = {
+    empty: cssRGB('--cell-empty'),
+    blue: cssRGB('--cell-blue'),
+    red: cssRGB('--cell-red'),
+    orange: cssRGB('--orange')
+  };
+  function mixRGB(from, to, level) {
+    return [
+      Math.round(from[0] + (to[0] - from[0]) * level),
+      Math.round(from[1] + (to[1] - from[1]) * level),
+      Math.round(from[2] + (to[2] - from[2]) * level)
+    ];
   }
 
   function escapeHTML(text) {
@@ -492,18 +570,26 @@
       imageData.data[i * 4 + 3] = 255;
     }
     context.putImageData(imageData, 0, 0);
-    target.ctx.imageSmoothingEnabled = false;
+    target.ctx.imageSmoothingEnabled = true;
     target.ctx.drawImage(offscreen, 0, 0, target.w, target.h);
   }
 
-  function heatColor(value, maximum, signed) {
-    if (signed) {
-      const level = Math.min(1, Math.log1p(Math.abs(value)) / Math.log1p(Math.max(1, maximum)));
-      if (value >= 0) return [255, Math.round(255 - 190 * level), Math.round(255 - 190 * level)];
-      return [Math.round(255 - 190 * level), Math.round(255 - 190 * level), 255];
-    }
+  /* 有符号量统一用发散色标：0=浅中性、正=暖红、负=冷蓝，端点来自 CSS 变量。 */
+  function heatColor(value, maximum) {
+    const level = Math.min(1, Math.log1p(Math.abs(value)) / Math.log1p(Math.max(1, maximum)));
+    return value >= 0 ? mixRGB(RGB.empty, RGB.red, level) : mixRGB(RGB.empty, RGB.blue, level);
+  }
+
+  /* 量化步长是无符号量：白 → 暖橙，避免和“蓝 = 负”撞语义。 */
+  function magnitudeColor(value, maximum) {
     const level = Math.min(1, Math.sqrt(Math.max(0, value) / Math.max(1, maximum)));
-    return [Math.round(236 - 150 * level), Math.round(242 - 145 * level), Math.round(255 - 55 * level)];
+    return mixRGB([255, 253, 246], RGB.orange, level);
+  }
+
+  /* 移位块沿用同一组端点，只是改用 0.7 次幂让 0 附近过渡更柔和。 */
+  function shiftedBlockColor(value) {
+    const level = Math.pow(Math.min(1, Math.abs(value) / 128), 0.7);
+    return mixRGB(RGB.empty, value < 0 ? RGB.blue : RGB.orange, level);
   }
 
   function grayColor(value) {
@@ -511,8 +597,14 @@
     return [level, level, level];
   }
 
+  /* 用 WCAG 相对亮度挑字色：约 0.21 是深字与白字对比度的交叉点（sRGB 灰度 ≈ 126）。 */
   function textColor(rgb) {
-    return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) > 158 ? '#152033' : '#ffffff';
+    const linear = function (channel) {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+    };
+    const luminance = 0.2126 * linear(rgb[0]) + 0.7152 * linear(rgb[1]) + 0.0722 * linear(rgb[2]);
+    return luminance > 0.21 ? DARK_TEXT : '#ffffff';
   }
 
   function drawCells(target, values, colorFunction, options) {
@@ -564,7 +656,7 @@
     if (typeof options.highlight === 'number' && options.highlight >= 0) {
       const row = Math.floor(options.highlight / 8);
       const column = options.highlight % 8;
-      context.strokeStyle = '#111827';
+      context.strokeStyle = textColor(colorFunction(values[options.highlight]));
       context.lineWidth = 2.5;
       context.strokeRect(column * cellWidth + 1.5, row * cellHeight + 1.5, cellWidth - 3, cellHeight - 3);
     }
@@ -574,11 +666,38 @@
     const context = target.ctx;
     const blockWidth = target.w / imageWidth * 8;
     const blockHeight = target.h / imageHeight * 8;
+    const x = state.blockX * blockWidth;
+    const y = state.blockY * blockHeight;
+    const cx = x + blockWidth / 2;
+    const cy = y + blockHeight / 2;
     context.fillStyle = 'rgba(29,78,216,0.22)';
-    context.fillRect(state.blockX * blockWidth, state.blockY * blockHeight, blockWidth, blockHeight);
+    context.fillRect(x, y, blockWidth, blockHeight);
+    context.strokeStyle = 'rgba(255,255,255,0.9)';
+    context.lineWidth = 5;
+    context.strokeRect(x, y, blockWidth, blockHeight);
     context.strokeStyle = '#1d4ed8';
     context.lineWidth = 2.5;
-    context.strokeRect(state.blockX * blockWidth, state.blockY * blockHeight, blockWidth, blockHeight);
+    context.strokeRect(x, y, blockWidth, blockHeight);
+    context.beginPath();
+    context.moveTo(cx - 13, cy); context.lineTo(cx + 13, cy);
+    context.moveTo(cx, cy - 13); context.lineTo(cx, cy + 13);
+    context.strokeStyle = 'rgba(255,255,255,0.9)';
+    context.lineWidth = 4;
+    context.stroke();
+    context.strokeStyle = '#1d4ed8';
+    context.lineWidth = 1.5;
+    context.stroke();
+    const label = '(' + state.blockX + ', ' + state.blockY + ')';
+    context.font = '600 11px Consolas, monospace';
+    const labelWidth = context.measureText(label).width + 10;
+    const labelX = clamp(cx + 12, 2, target.w - labelWidth - 2);
+    const labelY = clamp(cy - 20, 2, target.h - 20);
+    context.fillStyle = 'rgba(255,255,255,0.92)';
+    context.fillRect(labelX, labelY, labelWidth, 16);
+    context.fillStyle = '#1d4ed8';
+    context.textAlign = 'left';
+    context.textBaseline = 'middle';
+    context.fillText(label, labelX + 5, labelY + 8);
   }
 
   function drawRGBBlockPreview(target, blockX, blockY) {
@@ -1275,10 +1394,10 @@
     {
       id: 'visualLuma', short: '亮度颜色', tag: '原理 01',
       title: '人眼先看亮度，再看颜色',
-      lead: '上面是原图，下面是调亮度、调饱和度后的两张结果——都保留亮度和颜色，哪张区别更大？',
-      principle: '<p>上面是你的原图，下面第二排是同一张图分别调了<b>亮度</b>和<b>饱和度</b>的结果：② 只把亮度压低，颜色还在；③ 只把饱和度调低，明暗还在。两张图都同时包含亮度和色度，区别只在“动了哪个通道”。</p><p>视网膜上<b>视杆细胞</b>管明暗（约 1 亿 2500 万个），<b>视锥细胞</b>管颜色（约 600 万个），所以人眼对亮度敏感、对颜色迟钝。下面两个滑块各测一次：先别管数值，凭感觉拖到“明显变了”，再点按钮看实际改了多少——两个百分比会告诉你答案。JPEG 据此把 RGB 换成 <b>Y + Cb/Cr</b>，后面只对色度下采样。</p>',
+      lead: '上面是原图，下面两张结果同时以 ±5% 自动来回跳——同样幅度，哪张你更容易看出来？',
+      principle: '<p>上面是你的原图，下面第二排是同一张图分别调了<b>亮度</b>和<b>饱和度</b>的结果：② 只动亮度，颜色还在；③ 只动饱和度，明暗还在。两张图都同时包含亮度和色度，区别只在“动了哪个通道”。</p><p>视网膜上<b>视杆细胞</b>管明暗（约 1 亿 2500 万个），<b>视锥细胞</b>管颜色（约 600 万个），所以人眼对亮度敏感、对颜色迟钝。下面两张图都按 <b>±5%</b> 自动来回跳，幅度完全一样，只看不用操作：亮度那张一眼就闪，饱和度那张几乎看不出来。这个不对称正是 JPEG 敢把 RGB 换成 <b>Y + Cb/Cr</b>、并且只对色度下采样的理由。</p>',
       formula: 'Y  = 0.299R + 0.587G + 0.114B  ← 亮度，细节都在这里\nCb = 128 - 0.168736R - 0.331264G + 0.5B  ← 蓝色度\nCr = 128 + 0.5R - 0.418688G - 0.081312B  ← 红色度',
-      tips: ['先别看数值：凭感觉拖到“明显变了”再点按钮', '两个通道各记一次，最后比两个百分比', 'Cb/Cr 变化平缓，才有后面下采样的空间'],
+      tips: ['两张图同步跳动，幅度都是 ±5%，差别只能来自“看不看得见”', '盯住亮度那张：一亮一暗非常明显', '再盯饱和度那张：同样的 5%，颜色几乎没变'],
       params: function () {
         const planes = Codec.rgbToYCbCr(state.rgb, state.width, state.height);
         return [
@@ -1293,16 +1412,16 @@
     {
       id: 'visualFreq', short: '低与高频', tag: '原理 02',
       title: '人眼对高频不敏感，所以敢删',
-      lead: '粗棋盘格一眼看清，细棋盘格糊成一片灰——那删掉高频，你还认得出这张图吗？',
-      principle: '<p>两块棋盘格放在眼前：粗格一眼看清，细格会糊成一片灰——人眼对<b>变化很快的细密图案</b>本来就不敏感。</p><p>把图像按 8×8 块做 DCT，再按 Zigzag 顺序切开：只留前 10 个低频系数，还能认出是山景；只留后 54 个高频系数，只剩一层看不清的纹理。自然图像的能量本来就集中在低频，所以 JPEG 敢把大量高频系数置零。</p>',
+      lead: '把亮度当成高度看：低频是平缓的坡，高频是密密麻麻的细锯齿。人眼对细密的高频图案本来就不敏感。',
+      principle: '<p>相邻像素的亮度差，就是“频率”：慢慢起伏的是低频，一小块一小块跳变的是高频。把亮度当高度画成地形图最直观——低频区域是平缓的坡面，高频区域是密密麻麻的细锯齿。</p><p>人眼对这种细密锯齿本来就不敏感；自然图像的能量也恰好集中在低频。按 8×8 块做 DCT 后，前 10 个低频系数往往就能还原出可辨认的画面，剩下 54 个高频系数大多是细纹和噪声——所以 JPEG 敢把大量高频系数置零，这就是后面量化做的事。</p>',
       formula: '低频：变化慢、成片、能量大 → 人眼敏感，保留\n高频：变化快、细密、能量小 → 人眼迟钝，可删',
-      tips: ['低频决定“是什么”，高频决定“有多细”', '细密条纹对比度低时，人眼几乎分辨不出', '信号“变化得快不快”，就是频率', '三维视图：把亮度当高度，低频是缓坡大台阶，高频是密锯齿（可拖动旋转）'],
+      tips: ['低频决定“是什么”，高频决定“有多细”', '细密条纹对比度低时，人眼几乎分辨不出', '信号“变化得快不快”，就是频率', '三维视图：把亮度当高度，低频是缓坡，高频是密锯齿（可拖动旋转）'],
       params: function () {
         return [
           ['低频系数', 'Zigzag 前 10 个'],
           ['高频系数', '其余 54 个'],
           ['DCT 块', '8 × 8'],
-          ['显示方式', '高频加 128 提亮']
+          ['三维视图', '你的照片']
         ];
       },
       tools: function () { return ''; }
@@ -1646,11 +1765,154 @@
       figure('colorY', 'Y 亮度 8×8 · 范围 ' + rangeText(block.y, 0)) +
       figure('colorCb', 'Cb 蓝色差 8×8 · 范围 ' + rangeText(block.cb, 0)) +
       figure('colorCr', 'Cr 红色差 8×8 · 范围 ' + rangeText(block.cr, 0)) +
-      '</div><p class="note" style="margin-top:8px">只转换第一步选中的 8×8 块；Cb/Cr 以 128 为中性值。</p>';
+      '</div>' +
+      '<div class="pixel-example" id="colorPixelExample"></div>' +
+      '<p class="note" style="margin-top:8px">只转换第一步选中的 8×8 块；Cb/Cr 以 128 为中性值。</p>';
     drawRGBBlockPreview(colorCanvas('colorRGB'), state.blockX, state.blockY);
     drawCells(colorCanvas('colorY'), block.y, grayColor, { gridColor: 'rgba(255,255,255,0.55)' });
     drawCells(colorCanvas('colorCb'), block.cb, function (value) { return chromaColor(value, 'cb'); }, { gridColor: 'rgba(255,255,255,0.55)' });
     drawCells(colorCanvas('colorCr'), block.cr, function (value) { return chromaColor(value, 'cr'); }, { gridColor: 'rgba(255,255,255,0.55)' });
+    const sourceX = Math.min(state.width - 1, state.blockX * 8 + 4);
+    const sourceY = Math.min(state.height - 1, state.blockY * 8 + 4);
+    const index = (sourceY * state.width + sourceX) * 4;
+    const r = state.rgb[index];
+    const g = state.rgb[index + 1];
+    const b = state.rgb[index + 2];
+    document.getElementById('colorPixelExample').innerHTML =
+      '<span class="pixel-swatch" style="background:rgb(' + r + ',' + g + ',' + b + ')"></span>' +
+      '<b>块中心像素 (' + (state.blockX * 8 + 4) + ', ' + (state.blockY * 8 + 4) + ')</b>' +
+      '<span class="pixel-values">RGB　R ' + r + '　G ' + g + '　B ' + b + '</span>' +
+      '<span class="pixel-arrow">→</span>' +
+      '<span class="pixel-values">YCbCr　Y ' + Math.round(block.y[36]) + '　Cb ' + Math.round(block.cb[36]) + '　Cr ' + Math.round(block.cr[36]) + '</span>';
+  }
+
+  /* ---- 色度下采样的局部对比 ------------------------------------------
+     8×8 的色度格只能看出“样本变少了”，看不出观感上的变化。这里以第一步选中的
+     8×8 块为中心取一块 160×160 的区域（20×20 个块），按当前格式走一遍
+     “下采样 → 上采样 → 逆颜色变换”，与 4:4:4 的全分辨率结果并排显示。
+     换个分析块，这块对比区就跟着换。 */
+  const CROP_SIZE = 160;
+  const CROP_CANVAS = 352;
+  let cropWindowCache = { key: '', window: null };
+
+  /* 跟随分析块：以其像素质心为中心取窗，原点对齐到 8 像素（也就对齐了色度采样格），
+     贴到画面边缘时向内收。 */
+  function chromaCropWindow() {
+    const key = state.imageId + ':' + state.blockX + ':' + state.blockY;
+    if (cropWindowCache.key === key && cropWindowCache.window) return cropWindowCache.window;
+    const size = Math.max(8, Math.min(CROP_SIZE, Math.floor(Math.min(state.width, state.height) / 8) * 8));
+    const centerX = state.blockX * 8 + 4;
+    const centerY = state.blockY * 8 + 4;
+    const snap = function (center, limit) {
+      return clamp(Math.floor((center - size / 2) / 8) * 8, 0, Math.max(0, limit - size));
+    };
+    const crop = { x: snap(centerX, state.width), y: snap(centerY, state.height), size: size };
+    cropWindowCache = { key: key, window: crop };
+    return crop;
+  }
+
+  /* 抠出窗内的 Y/Cb/Cr 平面（全分辨率，取整口径与 8×8 块一致）。 */
+  function cropPlanes(crop) {
+    const size = crop.size;
+    const y = new Float32Array(size * size);
+    const cb = new Float32Array(size * size);
+    const cr = new Float32Array(size * size);
+    for (let row = 0; row < size; row++) {
+      for (let column = 0; column < size; column++) {
+        const sourceX = Math.min(state.width - 1, crop.x + column);
+        const sourceY = Math.min(state.height - 1, crop.y + row);
+        const index = (sourceY * state.width + sourceX) * 4;
+        const r = state.rgb[index];
+        const g = state.rgb[index + 1];
+        const b = state.rgb[index + 2];
+        const at = row * size + column;
+        y[at] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+        cb[at] = Math.round(128 - 0.168736 * r - 0.331264 * g + 0.5 * b);
+        cr[at] = Math.round(128 + 0.5 * r - 0.418688 * g - 0.081312 * b);
+      }
+    }
+    return { y: y, cb: cb, cr: cr, size: size };
+  }
+
+  /* 与编解码器同一条路：2×2（4:2:0）/ 1×2（4:2:2）平均下采样，再双线性插值回原尺寸。 */
+  function chromaRoundTrip(plane, size, mode) {
+    const small = Codec.downsample(plane, size, size, mode);
+    return Codec.upsampleBilinear(small.data, small.w, small.h, size, size, mode);
+  }
+
+  function subsampleCompareMarkup(crop, mode) {
+    const shown = mode === '444' ? '420' : mode;
+    const label = shown === '422' ? '4:2:2' : '4:2:0';
+    const method = shown === '422' ? '水平 2 个取平均，垂直保留' : '4 个色度样本平均成 1 个';
+    const zoom = CROP_CANVAS / crop.size;
+    return '<div class="sub-compare">' +
+      '<div class="sub-compare-head">局部对比<span>以分析块 (' + state.blockX + ', ' + state.blockY +
+      ') 为中心 · 像素 (' + crop.x + ', ' + crop.y + ') 起 ' + crop.size + '×' + crop.size +
+      ' · 放大 ×' + (zoom >= 10 ? Math.round(zoom) : zoom.toFixed(1)) + ' · ' + label + '：' + method +
+      '</span></div>' +
+      '<div class="grid-2">' +
+      figure('subCropBefore', '采样前 · 4:4:4，色度逐像素保留') +
+      figure('subCropAfter', '采样后 · ' + label + ' 重建（色度插值放大）' +
+        (mode === '444' ? '<br>当前参数为 4:4:4，这里用 4:2:0 举例' : '')) +
+      '</div><p class="note" id="subCropNote"></p></div>';
+  }
+
+  function drawSubsampleCompare(crop, mode) {
+    const before = setupCanvas('subCropBefore', CROP_CANVAS, CROP_CANVAS);
+    const after = setupCanvas('subCropAfter', CROP_CANVAS, CROP_CANVAS);
+    if (!before || !after) return;
+    const shown = mode === '444' ? '420' : mode;
+    const planes = cropPlanes(crop);
+    const size = crop.size;
+    const beforeRGB = Codec.ycbcrToRgb(planes.y, planes.cb, planes.cr, size, size);
+    const cbAfter = chromaRoundTrip(planes.cb, size, shown);
+    const crAfter = chromaRoundTrip(planes.cr, size, shown);
+    const afterRGB = Codec.ycbcrToRgb(planes.y, cbAfter, crAfter, size, size);
+    drawRGBInto(before, beforeRGB, size, size);
+    drawRGBInto(after, afterRGB, size, size);
+    let maxCb = 0;
+    let maxCr = 0;
+    let total = 0;
+    for (let i = 0; i < size * size; i++) {
+      const deltaCb = Math.abs(cbAfter[i] - planes.cb[i]);
+      const deltaCr = Math.abs(crAfter[i] - planes.cr[i]);
+      if (deltaCb > maxCb) maxCb = deltaCb;
+      if (deltaCr > maxCr) maxCr = deltaCr;
+      total += deltaCb + deltaCr;
+    }
+    const note = document.getElementById('subCropNote');
+    if (note) {
+      const observation = (maxCb + maxCr) < 3
+        ? '这块颜色本来就平，下采样几乎改不动它——4:2:0 只在颜色交界处吃亏。'
+        : '颜色交界变软、细密的彩色纹路被抹平；亮度边缘仍然清晰，因为 Y 一个样本都没丢。';
+      note.innerHTML = '观察要点：' + observation +
+        '该区域色度最大偏差 ΔCb/ΔCr = ' + Math.round(maxCb) + ' / ' + Math.round(maxCr) +
+        '，平均 ' + (total / (size * size * 2)).toFixed(1) + '（0–255）。';
+    }
+  }
+
+  /* 8×8 色度格上直接标出哪些样本被保留：444 全留，422 每两列留一列，420 每 2×2 留一个。 */
+  function drawSamplingPattern(target, mode) {
+    const context = target.ctx;
+    const cell = target.w / 8;
+    context.clearRect(0, 0, target.w, target.h);
+    for (let row = 0; row < 8; row++) {
+      for (let column = 0; column < 8; column++) {
+        const keep = mode === '444' || (mode === '422' ? column % 2 === 0 : row % 2 === 0 && column % 2 === 0);
+        context.fillStyle = keep ? 'rgba(29,78,216,0.9)' : 'rgba(148,163,184,0.16)';
+        const size = keep ? cell - 6 : cell - 10;
+        const offset = (cell - size) / 2;
+        context.beginPath();
+        context.arc(column * cell + cell / 2, row * cell + cell / 2, Math.max(2, size / 2), 0, Math.PI * 2);
+        context.fill();
+      }
+    }
+    context.strokeStyle = 'rgba(148,163,184,0.45)';
+    context.lineWidth = 1;
+    for (let i = 0; i <= 8; i++) {
+      context.beginPath(); context.moveTo(i * cell, 0); context.lineTo(i * cell, target.h); context.stroke();
+      context.beginPath(); context.moveTo(0, i * cell); context.lineTo(target.w, i * cell); context.stroke();
+    }
   }
 
   function renderSubsampleStep() {
@@ -1660,17 +1922,22 @@
     const crSample = subsampleChroma(block.cr, mode);
     const ratio = mode === '420' ? '25%' : mode === '422' ? '50%' : '100%';
     const sampleSize = cbSample.width + ' × ' + cbSample.height;
+    const crop = chromaCropWindow();
+    const compare = subsampleCompareMarkup(crop, mode);
     if (mode === '444') {
       stage.innerHTML = '<div class="grid-2">' + figure('subCb', 'Cb 8×8（4:4:4 不降采样）') +
         figure('subCr', 'Cr 8×8（4:4:4 不降采样）') + '</div>' +
-        '<div style="margin-top:12px">' + statBlock([
+        '<div class="sub-sample-row"><div class="sample-pattern">' + figure('subSamplePattern', '色度采样位置（蓝 = 保留）') + '</div>' +
+        '<div class="sample-pattern-stats">' + statBlock([
           ['分析块', '(' + state.blockX + ', ' + state.blockY + ')'],
           ['采样格式', '4:4:4'],
           ['Cb/Cr 尺寸', '8 × 8'],
           ['色度数据量', '100%']
-        ]) + '</div><p class="note" style="margin-top:8px">4:4:4 保留选中块的全部色度样本。</p>';
+        ]) + '</div></div><p class="note" style="margin-top:8px">4:4:4 保留选中块的全部色度样本。</p>' + compare;
       drawSampleGrid(setupCanvas('subCb', 360, 360), block.cb, 8, 8, 'cb');
       drawSampleGrid(setupCanvas('subCr', 360, 360), block.cr, 8, 8, 'cr');
+      drawSamplingPattern(setupCanvas('subSamplePattern', 180, 180), mode);
+      drawSubsampleCompare(crop, mode);
       return;
     }
     stage.innerHTML = '<div class="grid-2">' +
@@ -1678,16 +1945,51 @@
       figure('subCbSmall', 'Cb 下采样 ' + sampleSize) +
       figure('subCrOriginal', 'Cr 原 8×8') +
       figure('subCrSmall', 'Cr 下采样 ' + sampleSize) + '</div>' +
-      '<div style="margin-top:12px">' + statBlock([
+      '<div class="sub-sample-row"><div class="sample-pattern">' + figure('subSamplePattern', '色度采样位置（蓝 = 保留）') + '</div>' +
+      '<div class="sample-pattern-stats">' + statBlock([
         ['分析块', '(' + state.blockX + ', ' + state.blockY + ')'],
         ['采样格式', mode === '422' ? '4:2:2（水平 ÷2）' : '4:2:0（水平、垂直 ÷2）'],
         ['Cb/Cr 尺寸', sampleSize],
         ['色度数据量', ratio]
-      ]) + '</div><p class="note" style="margin-top:8px">这里只展示编码端下采样后的色度样本。</p>';
+      ]) + '</div></div><p class="note" style="margin-top:8px">这里只展示编码端下采样后的色度样本。</p>' + compare;
     drawSampleGrid(setupCanvas('subCbOriginal', 360, 360), block.cb, 8, 8, 'cb');
     drawSampleGrid(setupCanvas('subCrOriginal', 360, 360), block.cr, 8, 8, 'cr');
     drawSampleGrid(setupCanvas('subCbSmall', 360, 360), cbSample.data, cbSample.width, cbSample.height, 'cb');
     drawSampleGrid(setupCanvas('subCrSmall', 360, 360), crSample.data, crSample.width, crSample.height, 'cr');
+    drawSamplingPattern(setupCanvas('subSamplePattern', 180, 180), mode);
+    drawSubsampleCompare(crop, mode);
+  }
+
+  /* 把选中块放回图像里看：画周围 4×4 个 8×8 块，蓝框是真正参与后续变换的那一块。 */
+  function drawBlockNeighborhood(target, blockX, blockY) {
+    const context = target.ctx;
+    const startX = clamp(blockX - 1, 0, Math.max(0, Math.ceil(state.width / 8) - 4));
+    const startY = clamp(blockY - 1, 0, Math.max(0, Math.ceil(state.height / 8) - 4));
+    const cell = target.w / 32;
+    context.clearRect(0, 0, target.w, target.h);
+    for (let y = 0; y < 32; y++) {
+      for (let x = 0; x < 32; x++) {
+        const sourceX = Math.min(state.width - 1, (startX * 8 + x));
+        const sourceY = Math.min(state.height - 1, (startY * 8 + y));
+        const index = (sourceY * state.width + sourceX) * 4;
+        context.fillStyle = 'rgb(' + state.rgb[index] + ',' + state.rgb[index + 1] + ',' + state.rgb[index + 2] + ')';
+        context.fillRect(x * cell, y * cell, cell + 0.5, cell + 0.5);
+      }
+    }
+    context.strokeStyle = 'rgba(255,255,255,0.55)';
+    context.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      context.beginPath(); context.moveTo(i * 8 * cell, 0); context.lineTo(i * 8 * cell, target.h); context.stroke();
+      context.beginPath(); context.moveTo(0, i * 8 * cell); context.lineTo(target.w, i * 8 * cell); context.stroke();
+    }
+    const localX = (blockX - startX) * 8 * cell;
+    const localY = (blockY - startY) * 8 * cell;
+    context.strokeStyle = 'rgba(255,255,255,0.95)';
+    context.lineWidth = 4;
+    context.strokeRect(localX, localY, 8 * cell, 8 * cell);
+    context.strokeStyle = '#1d4ed8';
+    context.lineWidth = 2.5;
+    context.strokeRect(localX, localY, 8 * cell, 8 * cell);
   }
 
   function renderBlockStep() {
@@ -1695,12 +1997,14 @@
       figure('blockY', 'Y 块 ' + blockLabel('Y')) +
       figure('blockCb', 'Cb 块 ' + blockLabel('Cb')) +
       figure('blockCr', 'Cr 块 ' + blockLabel('Cr')) +
-      '</div><div style="margin-top:12px">' + statBlock([
+      '</div><div class="block-context-row"><div class="block-context-figure">' +
+      figure('blockNeighborhood', '选中块在图像中的位置（周围 4×4 个 8×8 块）') + '</div>' +
+      '<div class="block-context-stats">' + statBlock([
         ['分析分量', state.component],
         ['Y 块坐标', blockLabel('Y')],
         ['Cb 块坐标', blockLabel('Cb')],
         ['Cr 块坐标', blockLabel('Cr')]
-      ]) + '</div><p class="note" style="margin-top:8px">显示值为原始像素 0–255；DCT 前会减去 128。</p>';
+      ]) + '</div></div><p class="note" style="margin-top:8px">显示值为原始像素 0–255；DCT 前会减去 128。</p>';
     ['Y', 'Cb', 'Cr'].forEach(function (component) {
       const block = encodedBlock(component);
       const values = new Float64Array(64);
@@ -1711,6 +2015,7 @@
         gridColor: 'rgba(255,255,255,0.55)'
       });
     });
+    drawBlockNeighborhood(setupCanvas('blockNeighborhood', 160, 160), state.blockX, state.blockY);
   }
 
   function blockLabel(component) {
@@ -1743,7 +2048,7 @@
       gridColor: 'rgba(255,255,255,0.6)'
     });
     drawCells(setupCanvas('shiftCentered', 460, 460), block.pixels, function (value) {
-      return heatColor(value, 128, true);
+      return shiftedBlockColor(value);
     }, {
       text: function (value) { return String(Math.round(value)); },
       gridColor: 'rgba(255,255,255,0.6)'
@@ -1756,7 +2061,7 @@
     if (!readout) return;
     readout.textContent = '为什么先减 128：64 张基图里只有第 (0,0) 张的平均值非 0，其余 63 张平均值都是 0。' +
       '如果块的平均亮度还留着（比如 160），这 63 张均值为 0 的图案怎么也凑不出这个偏置，只能让 DC 硬扛，其它系数被带偏。' +
-      '减完 128 后，DC 专管平均亮度，AC 专管起伏，各司其职。右图里红色 = 比平均亮（正），蓝色 = 比平均暗（负）。';
+      '减完 128 后，DC 专管平均亮度，AC 专管起伏，各司其职。右图里暖橙 = 比平均亮（正），冷蓝 = 比平均暗（负），越浅越接近 0。';
   }
 
   /* ③ 二维视角：系数矩阵 + 单项贡献三联图 */
@@ -1779,7 +2084,7 @@
       figure('dctTermContribution', '② 基图 × 系数 F(u,v)：白=加亮，黑=压暗') +
       figure('dctTermRebuild', '③ 只留这一项能画出的块（+128）') +
       '</div>';
-    const target = setupCanvas('dctMain', 400, 400);
+    const target = setupCanvas('dctMain', 360, 360);
     drawCoefficientMatrix(target);
     target.canvas.addEventListener('click', function (event) {
       const rectangle = target.canvas.getBoundingClientRect();
@@ -1790,7 +2095,7 @@
       state.selectedCoeff = row * 8 + column;
       renderDctBasisView();
     });
-    const gallery = setupCanvas('dctBasis', 700, 700);
+    const gallery = setupCanvas('dctBasis', 600, 600);
     drawBasisGallery(gallery);
     gallery.canvas.addEventListener('click', function (event) {
       const rectangle = gallery.canvas.getBoundingClientRect();
@@ -1803,9 +2108,9 @@
       renderDctBasisView();
     });
     const selected = resolvedSelectedCoeff(block.coefficients);
-    drawDctTermViews(setupCanvas('dctTermBasis', 300, 300),
-      setupCanvas('dctTermContribution', 300, 300),
-      setupCanvas('dctTermRebuild', 300, 300), selected);
+    drawDctTermViews(setupCanvas('dctTermBasis', 260, 260),
+      setupCanvas('dctTermContribution', 260, 260),
+      setupCanvas('dctTermRebuild', 260, 260), selected);
     const readout = document.getElementById('dctReadout');
     readout.textContent = describeCoefficient(block.coefficients, selected);
   }
@@ -2105,7 +2410,7 @@
   function drawCoefficientMatrix(target) {
     const block = encodedBlock();
     const maximum = maxAbsCoefficient(block.coefficients);
-    drawCells(target, block.coefficients, function (value) { return heatColor(value, maximum, true); }, {
+    drawCells(target, block.coefficients, function (value) { return heatColor(value, maximum); }, {
       text: function (value) { return formatValue(value); },
       highlight: resolvedSelectedCoeff(block.coefficients),
       gridColor: 'rgba(255,255,255,0.75)'
@@ -2856,7 +3161,7 @@
       for (let column = 0; column < 8; column++) {
         const index = row * 8 + column;
         const done = axis === 'row' ? row < processed : column < processed;
-        const rgb = done ? heatColor(values[index], maximum, true) : [238, 242, 247];
+        const rgb = done ? heatColor(values[index], maximum) : RGB.empty;
         context.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
         context.fillRect(column * cellWidth, row * cellHeight, cellWidth, cellHeight);
         if (done) {
@@ -2982,7 +3287,7 @@
   function renderQuantStep() {
     const block = encodedBlock();
     stage.innerHTML = '<div class="grid-3">' +
-      figure('quantTable', '量化步长 q(u,v)') +
+      figure('quantTable', '量化步长 q(u,v)：颜色越暖步长越大') +
       figure('quantCoeff', '量化过程（灰色=未处理，红叉=置零）') +
       figure('quantError', '反量化误差 F′−F') +
       '</div><p class="note" id="quantReadout"></p><div style="margin-top:8px">' + statBlock([
@@ -2994,7 +3299,7 @@
     let quantMaximum = 1;
     for (let i = 0; i < 64; i++) quantMaximum = Math.max(quantMaximum, block.quant[i]);
     drawCells(setupCanvas('quantTable', 360, 360), block.quant, function (value) {
-      return heatColor(value, quantMaximum, false);
+      return magnitudeColor(value, quantMaximum);
     }, { text: function (value) { return String(Math.round(value)); }, gridColor: 'rgba(255,255,255,0.6)' });
     drawQuantizedCells(setupCanvas('quantCoeff', 360, 360), block);
     const decoded = decodedBlock();
@@ -3005,7 +3310,7 @@
       errorMaximum = Math.max(errorMaximum, Math.abs(error[i]));
     }
     drawCells(setupCanvas('quantError', 360, 360), error, function (value) {
-      return heatColor(value, errorMaximum, true);
+      return heatColor(value, errorMaximum);
     }, { text: function (value) { return formatValue(value); }, gridColor: 'rgba(255,255,255,0.6)' });
     refreshQuantReadout(block);
   }
@@ -3024,8 +3329,8 @@
       const processed = step >= 64 || i < step;
       const value = block.quantized[i];
       let rgb;
-      if (processed) rgb = heatColor(value, maximum, true);
-      else rgb = [238, 242, 247];
+      if (processed) rgb = heatColor(value, maximum);
+      else rgb = RGB.empty;
       context.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
       context.fillRect(column * cellWidth, row * cellHeight, cellWidth, cellHeight);
       if (processed && value === 0) {
@@ -3039,7 +3344,7 @@
         context.lineTo(column * cellWidth + padding, (row + 1) * cellHeight - padding);
         context.stroke();
       }
-      context.fillStyle = processed ? textColor(rgb) : '#64748b';
+      context.fillStyle = textColor(rgb);
       context.font = '600 10px Consolas, monospace';
       context.textAlign = 'center';
       context.textBaseline = 'middle';
@@ -3122,7 +3427,7 @@
       const row = Codec.ZIG[order][0];
       const column = Codec.ZIG[order][1];
       const value = block.scan[order];
-      const rgb = heatColor(value, maximum, true);
+      const rgb = heatColor(value, maximum);
       context.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
       context.fillRect(column * cellWidth, row * cellHeight, cellWidth, cellHeight);
       if (order < state.zigStep) {
@@ -3193,7 +3498,7 @@
       const row = Math.floor(index / 8);
       const column = index % 8;
       const value = block.scan[index];
-      const rgb = value === 0 ? [235, 240, 247] : heatColor(value, maximum, true);
+      const rgb = value === 0 ? RGB.empty : heatColor(value, maximum);
       context.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
       context.fillRect(column * cellWidth, row * cellHeight, cellWidth, cellHeight);
       context.fillStyle = textColor(rgb);
@@ -3264,7 +3569,7 @@
     const spans = rleSpans(block);
     for (let i = 0; i < 64; i++) {
       const value = block.scan[i];
-      const rgb = value === 0 ? [235, 240, 247] : heatColor(value, maximum, true);
+      const rgb = value === 0 ? RGB.empty : heatColor(value, maximum);
       context.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
       context.fillRect(i * cellWidth, top, cellWidth + 0.4, height);
     }
@@ -3389,7 +3694,7 @@
       const level = Math.min(1, Math.sqrt(bits / maximum));
       const rgb = processed
         ? [Math.round(220 - 160 * level), Math.round(232 - 170 * level), 255]
-        : [238, 242, 247];
+        : RGB.empty;
       context.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
       context.fillRect(column * cellWidth + 0.6, row * cellHeight + 0.6, cellWidth - 1.2, cellHeight - 1.2);
       if (step > 0 && step < mcus.length && index === step - 1) {
@@ -3502,27 +3807,37 @@
     stage.innerHTML = '<div class="grid-2">' +
       figure('dqOriginal', '原始 DCT 系数 F') +
       figure('dqQuantized', '量化系数 Fq') +
-      figure('dqTable', '量化表 Q') +
+      figure('dqTable', '量化表 Q（颜色越暖步长越大）') +
       figure('dqRestored', '反量化 Fq×Q') +
       '</div><p class="note" style="margin-top:10px">反量化后的系数与原始系数之间存在不可恢复的误差。</p>';
     let maximum = 1;
     for (let i = 0; i < 64; i++) maximum = Math.max(maximum, Math.abs(block.coefficients[i]), Math.abs(decoded.dequantized[i]));
     drawCells(setupCanvas('dqOriginal', 380, 380), block.coefficients, function (value) {
-      return heatColor(value, maximum, true);
+      return heatColor(value, maximum);
     }, { text: function (value) { return formatValue(value); }, gridColor: 'rgba(255,255,255,0.7)' });
     let quantizedMaximum = 1;
     for (let i = 0; i < 64; i++) quantizedMaximum = Math.max(quantizedMaximum, Math.abs(block.quantized[i]));
     drawCells(setupCanvas('dqQuantized', 380, 380), block.quantized, function (value) {
-      return heatColor(value, quantizedMaximum, true);
+      return heatColor(value, quantizedMaximum);
     }, { zeroMark: true, text: function (value) { return value === 0 ? '' : String(value); }, gridColor: 'rgba(255,255,255,0.7)' });
     let quantMaximum = 1;
     for (let i = 0; i < 64; i++) quantMaximum = Math.max(quantMaximum, block.quant[i]);
     drawCells(setupCanvas('dqTable', 380, 380), block.quant, function (value) {
-      return heatColor(value, quantMaximum, false);
+      return magnitudeColor(value, quantMaximum);
     }, { text: function (value) { return String(Math.round(value)); }, gridColor: 'rgba(255,255,255,0.7)' });
     drawCells(setupCanvas('dqRestored', 380, 380), decoded.dequantized, function (value) {
-      return heatColor(value, maximum, true);
+      return heatColor(value, maximum);
     }, { text: function (value) { return formatValue(value); }, gridColor: 'rgba(255,255,255,0.7)' });
+  }
+
+  /* 静态页与逐项动画共用同一误差量程，避免颜色含义在播放过程中漂移。 */
+  function idctErrorMaximum(block, decoded) {
+    let maximum = 1;
+    for (let i = 0; i < 64; i++) {
+      const restored = clamp(Math.round(decoded.pixels[i] + 128), 0, 255);
+      maximum = Math.max(maximum, Math.abs(restored - (block.pixels[i] + 128)));
+    }
+    return maximum;
   }
 
   function renderIdctStep() {
@@ -3531,17 +3846,16 @@
     const original = new Float64Array(64);
     const reconstructed = new Float64Array(64);
     const error = new Float64Array(64);
-    let maximumError = 1;
     for (let i = 0; i < 64; i++) {
       original[i] = block.pixels[i] + 128;
       reconstructed[i] = clamp(Math.round(decoded.pixels[i] + 128), 0, 255);
       error[i] = reconstructed[i] - original[i];
-      maximumError = Math.max(maximumError, Math.abs(error[i]));
     }
+    const maximumError = idctErrorMaximum(block, decoded);
     stage.innerHTML = '<div class="grid-3">' +
       figure('idctOriginal', '原始像素块') +
       figure('idctRestored', 'IDCT 重建块') +
-      figure('idctError', '像素误差 ×10') +
+      figure('idctError', '像素误差（重建−原始）') +
       '</div><p class="note" id="idctReadout"></p><div style="margin-top:8px">' + statBlock([
         ['分量', state.component],
         ['块 MSE', mean(Array.from(error).map(function (v) { return v * v; })).toFixed(2)],
@@ -3554,10 +3868,10 @@
     drawCells(setupCanvas('idctRestored', 360, 360), reconstructed, grayColor, {
       text: function (value) { return String(Math.round(value)); }, gridColor: 'rgba(255,255,255,0.55)'
     });
-    const scaled = new Float64Array(64);
-    for (let i = 0; i < 64; i++) scaled[i] = Math.abs(error[i]) * 10;
-    drawCells(setupCanvas('idctError', 360, 360), scaled, grayColor, {
-      text: function (value) { return value === 0 ? '' : String(Math.round(value)); }, gridColor: 'rgba(255,255,255,0.55)'
+    drawCells(setupCanvas('idctError', 360, 360), error, function (value) {
+      return heatColor(value, maximumError);
+    }, {
+      text: function (value) { return value === 0 ? '' : formatValue(value); }, gridColor: 'rgba(255,255,255,0.55)'
     });
   }
 
@@ -3714,104 +4028,129 @@
     return visualCache;
   }
 
-  /* 原理 01：照视频的讲法——一张图分两路，先问再揭晓，最后落到“亮度优先、色度可砍”。 */
+  /* 原理 01：照视频的讲法——一张图分两路，同样 ±5% 自动来回跳，让人自己感受亮度 / 颜色谁更扎眼。 */
+  let lumaDemoTimer = null;
+  const LUMA_DEMO_DELTA = 5;
+  const LUMA_DEMO_PERIOD = 900;
+
+  function stopLumaDemo() {
+    if (lumaDemoTimer) {
+      clearInterval(lumaDemoTimer);
+      lumaDemoTimer = null;
+    }
+  }
+
   function renderVisualLumaStep() {
     const data = buildVisualData();
+    stopLumaDemo();
     stage.innerHTML =
-      '<div class="hvs-block"><div class="hvs-head">① 亮度 / 颜色感知<span>上面是原图，下面是调节亮度、调节饱和度后的两张结果——哪张区别更大？</span></div>' +
+      '<div class="hvs-block"><div class="hvs-head">① 亮度 / 颜色感知<span>下面两张图同时按 ±5% 来回跳，幅度一模一样——哪一张的变化更容易被你察觉？</span></div>' +
       '<div class="hvs-source-row">' + figure('hvsLumaOrig', '① 原图（你的照片：亮度 + 颜色）') + '</div>' +
       '<div class="grid-2">' +
-      figure('hvsLumaY', '') +
-      figure('hvsLumaColor', '') +
+      figure('hvsLumaY', '② 只动亮度：±5% 自动交替') +
+      figure('hvsLumaColor', '③ 只动饱和度：±5% 自动交替') +
       '</div>' +
       '<div class="hvs-sliders">' +
-      '<div class="hvs-blind-group"><label>调节亮度 <input type="range" id="hvsBright" min="40" max="160" value="100"><output id="hvsBrightValue" class="hvs-blind">?</output></label><button class="stage-btn" id="hvsBrightReveal">我看出变化了</button></div>' +
-      '<div class="hvs-blind-group"><label>调节饱和度 <input type="range" id="hvsSat" min="0" max="200" value="100"><output id="hvsSatValue" class="hvs-blind">?</output></label><button class="stage-btn" id="hvsSatReveal">我看出变化了</button></div>' +
-      '<button class="stage-btn" id="hvsReset">重新开始</button>' +
+      '<div class="hvs-auto-group"><b>亮度</b><output id="hvsBrightValue">+5%</output><span>自动 +5% ⇄ −5%</span></div>' +
+      '<div class="hvs-auto-group"><b>饱和度</b><output id="hvsSatValue">+5%</output><span>自动 +5% ⇄ −5%</span></div>' +
+      '<button class="stage-btn" id="hvsPause">暂停</button>' +
+      '</div>' +
+      '<div class="grid-2 hvs-diff-row">' +
+      figure('hvsBrightDiff', '亮度差异放大 ×8：整张都在变') +
+      figure('hvsSatDiff', '饱和度差异放大 ×8：几乎全黑') +
       '</div>' +
       '<div class="hvs-conclusion">人眼靠亮度认东西 → JPEG 第一步：把 RGB 换成 Y + Cb/Cr，然后压缩颜色信息</div>' +
       '</div>';
     drawRGBInto(setupCanvas('hvsLumaOrig', 520, 340), data.original, state.width, state.height);
     drawRGBInto(setupCanvas('hvsLumaY', 400, 260), data.original, state.width, state.height);
     drawRGBInto(setupCanvas('hvsLumaColor', 400, 260), data.original, state.width, state.height);
-    const bright = document.getElementById('hvsBright');
-    const sat = document.getElementById('hvsSat');
-    const reset = document.getElementById('hvsReset');
-    const brightReveal = document.getElementById('hvsBrightReveal');
-    const satReveal = document.getElementById('hvsSatReveal');
+    // 用同一把放大尺画出两种通道各自的改变量，让“看得见 / 看不见”在静态画面里也成立。
+    const brightened = new Uint8ClampedArray(data.original.length);
+    const saturated = new Uint8ClampedArray(data.original.length);
+    for (let i = 0; i < data.original.length; i += 4) {
+      const r = data.original[i];
+      const g = data.original[i + 1];
+      const b = data.original[i + 2];
+      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+      brightened[i] = clamp(Math.round(r * 1.05), 0, 255);
+      brightened[i + 1] = clamp(Math.round(g * 1.05), 0, 255);
+      brightened[i + 2] = clamp(Math.round(b * 1.05), 0, 255);
+      brightened[i + 3] = data.original[i + 3];
+      saturated[i] = clamp(Math.round(luma + (r - luma) * 1.05), 0, 255);
+      saturated[i + 1] = clamp(Math.round(luma + (g - luma) * 1.05), 0, 255);
+      saturated[i + 2] = clamp(Math.round(luma + (b - luma) * 1.05), 0, 255);
+      saturated[i + 3] = data.original[i + 3];
+    }
+    drawDifferenceInto(setupCanvas('hvsBrightDiff', 400, 120), data.original, brightened, state.width, state.height, 8);
+    drawDifferenceInto(setupCanvas('hvsSatDiff', 400, 120), data.original, saturated, state.width, state.height, 8);
     const brightValue = document.getElementById('hvsBrightValue');
     const satValue = document.getElementById('hvsSatValue');
+    const pause = document.getElementById('hvsPause');
     const brightPicture = document.getElementById('hvsLumaY');
     const satPicture = document.getElementById('hvsLumaColor');
-    if (bright && sat && reset && brightReveal && satReveal && brightValue && satValue && brightPicture && satPicture) {
-      const deltaText = function (value) {
-        const delta = Number(value) - 100;
-        if (delta === 0) return '±0%';
-        return (delta > 0 ? '+' : '−') + Math.abs(delta) + '%';
+    if (brightValue && satValue && pause && brightPicture && satPicture) {
+      // 两张图严格同步：同一时刻一起亮、一起暗，剩下的差别只能来自“看得见 / 看不见”。
+      let raised = true;
+      const paint = function () {
+        const delta = raised ? LUMA_DEMO_DELTA : -LUMA_DEMO_DELTA;
+        brightPicture.style.filter = 'brightness(' + (100 + delta) / 100 + ')';
+        satPicture.style.filter = 'saturate(' + (100 + delta) / 100 + ')';
+        const text = (delta > 0 ? '+' : '−') + Math.abs(delta) + '%';
+        brightValue.textContent = text;
+        satValue.textContent = text;
       };
-      const applyFilters = function () {
-        brightPicture.style.filter = 'brightness(' + (Number(bright.value) / 100) + ')';
-        satPicture.style.filter = 'saturate(' + (Number(sat.value) / 100) + ')';
+      const tick = function () {
+        raised = !raised;
+        paint();
       };
-      const hideValue = function (output, button) {
-        output.textContent = '?';
-        output.classList.add('hvs-blind');
-        button.textContent = '我看出变化了';
-      };
-      const revealValue = function (slider, output, button) {
-        output.textContent = deltaText(slider.value);
-        output.classList.remove('hvs-blind');
-        button.textContent = '已记录';
-      };
-      bright.addEventListener('input', function () {
-        applyFilters();
-        hideValue(brightValue, brightReveal);
+      paint();
+      lumaDemoTimer = setInterval(tick, LUMA_DEMO_PERIOD);
+      pause.addEventListener('click', function () {
+        if (lumaDemoTimer) {
+          stopLumaDemo();
+          pause.textContent = '继续';
+        } else {
+          lumaDemoTimer = setInterval(tick, LUMA_DEMO_PERIOD);
+          pause.textContent = '暂停';
+        }
       });
-      sat.addEventListener('input', function () {
-        applyFilters();
-        hideValue(satValue, satReveal);
-      });
-      brightReveal.addEventListener('click', function () {
-        revealValue(bright, brightValue, brightReveal);
-      });
-      satReveal.addEventListener('click', function () {
-        revealValue(sat, satValue, satReveal);
-      });
-      reset.addEventListener('click', function () {
-        bright.value = 100;
-        sat.value = 100;
-        applyFilters();
-        hideValue(brightValue, brightReveal);
-        hideValue(satValue, satReveal);
-      });
-      applyFilters();
     }
   }
 
   /* 原理 02：照视频的讲法——棋盘格设问 → 你的照片删高频 → 亮度曲线落到“频率”。 */
   function renderVisualFreqStep() {
     const data = buildVisualData();
+    stopZoomDemo();
+    ZOOM_DEMO.progress = 0;
+    ZOOM_DEMO.direction = 1;
+    ZOOM_DEMO.hold = 0;
     stage.innerHTML =
-      '<div class="hvs-block"><div class="hvs-head">③ 低 / 高频感知<span>粗格看得清、细格糊成一片灰——删掉高频你还认得出吗？</span></div>' +
-      '<div class="grid-2">' +
-      figure('hvsCheckerLow', '低频：粗棋盘格<br><span class="ok">一眼看清</span>') +
-      figure('hvsCheckerHigh', '高频：细棋盘格<br><span class="warn">近看是格子，远看是灰</span>') +
-      '</div></div>' +
-      '<div class="grid-3">' +
-      figure('hvsGray', '你的照片 · 灰度（参考）') +
-      figure('hvsOnlyLow', '删掉高频（只留前 10 个低频系数）<br><span class="ok">几乎没差别</span>') +
-      figure('hvsOnlyHigh', '反过来只留高频（已提亮）<br><span class="warn">只剩纹理，认不出</span>') +
-      '</div>' +
-      figure('hvsRowCurve', '中间那一行的亮度值：走得平 = 低频，跳得急 = 高频') +
       renderFrequencySolidHTML(data) +
       '<div class="hvs-conclusion">人眼靠低频认物体、对高频不敏感 → JPEG 敢把高频系数大量置零（量化那一步）</div>';
-    drawCheckerInto(setupCanvas('hvsCheckerLow', 220, 220), 44);
-    drawCheckerInto(setupCanvas('hvsCheckerHigh', 220, 220), 4);
-    drawPlaneInto(setupCanvas('hvsGray', 320, 240), data.gray, data.grayWidth, data.grayHeight);
-    drawPlaneInto(setupCanvas('hvsOnlyLow', 320, 240), data.onlyLow, data.grayWidth, data.grayHeight);
-    drawPlaneInto(setupCanvas('hvsOnlyHigh', 320, 240), data.onlyHigh, data.grayWidth, data.grayHeight);
-    drawRowLumaCurve(setupCanvas('hvsRowCurve', 1040, 190), data.planes);
     paintFrequencySolid(data);
+    const zoomCanvas = setupCanvas('hvsZoomCanvas', 300, 300);
+    const play = document.getElementById('hvsZoomPlay');
+    const info = document.getElementById('hvsZoomInfo');
+    zoomUpdate = function () {
+      const display = drawZoomDemo(zoomCanvas, data, ZOOM_DEMO.progress);
+      const displayHeight = Math.round(display * state.height / Math.max(1, state.width));
+      if (info) {
+        info.textContent = '原图 ' + state.width + '×' + state.height + ' → 显示 ' +
+          display + '×' + displayHeight + ' 像素 · ' + zoomDemoText(display);
+      }
+    };
+    zoomUpdate();
+    if (play) {
+      play.addEventListener('click', function () {
+        if (ZOOM_DEMO.playing) {
+          stopZoomDemo();
+          play.textContent = '继续缩小';
+        } else {
+          startZoomDemo(play);
+        }
+      });
+      if (!ANIM.reduced) startZoomDemo(play);
+    }
   }
 
   function drawCheckerInto(target, cell) {
@@ -4011,20 +4350,6 @@
     return summarizeField(values, n);
   }
 
-  /* 人造棋盘格高度场：cells×cells 个格子，每格再细分 sub 个采样点。 */
-  function checkerField(cells, sub) {
-    const n = cells * sub + 1;
-    const values = new Float64Array(n * n);
-    for (let j = 0; j < n; j++) {
-      const gy = Math.min(cells - 1, Math.floor(j / sub));
-      for (let i = 0; i < n; i++) {
-        const gx = Math.min(cells - 1, Math.floor(i / sub));
-        values[j * n + i] = (gx + gy) % 2 === 0 ? 234 : 24;
-      }
-    }
-    return summarizeField(values, n);
-  }
-
   function summarizeField(values, n) {
     let minimum = Infinity;
     let maximum = -Infinity;
@@ -4058,82 +4383,192 @@
     data.solidFields = {
       regions: regions,
       photoLow: sampleRegionField(data.planes.y, state.width, state.height, regions.low, 41),
-      photoHigh: sampleRegionField(data.planes.y, state.width, state.height, regions.high, 41),
-      checkerLow: checkerField(3, 15),
-      checkerHigh: checkerField(24, 2)
+      photoHigh: sampleRegionField(data.planes.y, state.width, state.height, regions.high, 41)
     };
     return data.solidFields;
+  }
+
+  /* 同一把 0–255 尺子画一行亮度：低频走得平，高频跳得急。 */
+  function drawFieldRowCurve(target, field, color) {
+    const context = target.ctx;
+    const size = field.size;
+    const row = Math.floor(size / 2);
+    const left = 12;
+    const right = target.w - 10;
+    const top = 10;
+    const bottom = target.h - 16;
+    context.clearRect(0, 0, target.w, target.h);
+    context.font = '10px Consolas, monospace';
+    [0, 128, 255].forEach(function (value) {
+      const y = bottom - value / 255 * (bottom - top);
+      context.strokeStyle = 'rgba(148,163,184,0.4)';
+      context.setLineDash([3, 3]);
+      context.beginPath(); context.moveTo(left, y); context.lineTo(right, y); context.stroke();
+      context.setLineDash([]);
+      context.fillStyle = '#94a3b8';
+      context.textAlign = 'right';
+      context.fillText(String(value), left - 2, y + 3);
+    });
+    context.strokeStyle = color;
+    context.lineWidth = 1.5;
+    for (let i = 1; i < size; i++) {
+      const previous = field.values[row * size + i - 1];
+      const current = field.values[row * size + i];
+      context.beginPath();
+      context.moveTo(left + (i - 1) / (size - 1) * (right - left), bottom - previous / 255 * (bottom - top));
+      context.lineTo(left + i / (size - 1) * (right - left), bottom - current / 255 * (bottom - top));
+      context.stroke();
+    }
   }
 
   function renderFrequencySolidHTML(data) {
     const fields = frequencySolidFields(data);
     const regions = fields.regions;
-    const describe = function (field) {
-      return '相邻像素差 ' + field.activity.toFixed(1) + '，峰谷差 ' + Math.round(field.peak) + '（0–255）';
-    };
     const boxSize = regions.low.size + '×' + regions.low.size;
     return '<div class="hvs-block" id="hvsSolidBlock">' +
-      '<div class="hvs-head">④ 立体看频率<span>把亮度当高度：低频是缓坡和大台阶，高频是密密麻麻的锯齿</span>' +
-      '<div class="hvs-pager">' +
-      '<button type="button" data-freq-page="0" class="on">第 1 页 · 棋盘格</button>' +
-      '<button type="button" data-freq-page="1">第 2 页 · 你的照片</button>' +
-      '</div></div>' +
-      '<div class="hvs-page" data-freq-view="0">' +
-      '<div class="grid-2">' +
-      figure('hvsSolidCheckerLow', '从粗棋盘格里抠出 3×3 格（132×132）：九块大台地<br><span class="ok">周期 44 像素 · 低频</span>', 'hvs-solid') +
-      figure('hvsSolidCheckerHigh', '从细棋盘格里抠出 24×24 格（96×96）：密集锯齿<br><span class="warn">周期 4 像素 · 高频</span>', 'hvs-solid') +
+      '<div class="hvs-head">① 立体看频率<span>把亮度当高度：低频是缓坡，高频是密密麻麻的锯齿</span></div>' +
+      '<div class="freq-region-row">' +
+      figure('hvsRegionMap', '原图上自动挑出两块：<span style="color:#1d4ed8">蓝框</span>最平缓、<span style="color:#c2410c">橙框</span>最细密', 'hvs-solid') +
       '</div>' +
-      '<div class="hvs-conclusion">两块棋盘格的峰谷差一样大（都是 ' + Math.round(fields.checkerLow.peak) + ' 上下），差别只在“变化得多快”：相邻像素差 ' +
-      fields.checkerLow.activity.toFixed(1) + ' vs ' + fields.checkerHigh.activity.toFixed(1) +
-      '。人眼跟得上缓坡大台阶、跟不上密密锯齿——所以敢删高频系数</div>' +
-      '<div class="hvs-hint">按住任意一幅拖动，所有三维视角一起旋转</div>' +
+      '<div class="freq-curves">' +
+      '<div class="freq-curve-item">' + figure('hvsCurveLow', '低频区：中间一行的亮度值（蓝：走得平）') + '</div>' +
+      '<div class="freq-curve-item">' + figure('hvsCurveHigh', '高频区：中间一行的亮度值（橙：跳得急）') + '</div>' +
       '</div>' +
-      '<div class="hvs-page" data-freq-view="1" hidden>' +
-      '<div class="grid-3">' +
-      figure('hvsRegionMap', '照片上自动挑出两块：<span style="color:#1d4ed8">蓝框</span>最平缓，<span style="color:#c2410c">橙框</span>最细密', 'hvs-solid') +
-      figure('hvsSolidPhotoLow', '低频区 ' + boxSize + ' 像素<br><span class="ok">' + describe(fields.photoLow) + '</span>', 'hvs-solid') +
-      figure('hvsSolidPhotoHigh', '高频区 ' + boxSize + ' 像素<br><span class="warn">' + describe(fields.photoHigh) + '</span>', 'hvs-solid') +
+      '<div class="freq-pairs">' +
+      '<div class="freq-pair">' +
+      figure('hvsCropLow', '蓝框裁剪 ' + boxSize + '<br><span class="ok">缓坡 · 相邻像素差 ' + fields.photoLow.activity.toFixed(1) + '</span>', 'hvs-crop') +
+      figure('hvsSolidPhotoLow', '把蓝框那块立起来看（z = 亮度）<br><span class="ok">峰谷差 ' + Math.round(fields.photoLow.peak) + '（0–255）</span>', 'hvs-solid') +
       '</div>' +
+      '<div class="freq-pair">' +
+      figure('hvsCropHigh', '橙框裁剪 ' + boxSize + '<br><span class="warn">密锯齿 · 相邻像素差 ' + fields.photoHigh.activity.toFixed(1) + '</span>', 'hvs-crop') +
+      figure('hvsSolidPhotoHigh', '把橙框那块立起来看（z = 亮度）<br><span class="warn">峰谷差 ' + Math.round(fields.photoHigh.peak) + '（0–255）</span>', 'hvs-solid') +
+      '</div>' +
+      '</div>' +
+      '<div class="freq-zoom">' +
+      '<div class="freq-zoom-head">② 整体缩小<span>整幅照片等比例越缩越小，不移动、不裁切：高频先消失，低频还在</span></div>' +
+      '<div class="freq-zoom-body">' +
+      figure('hvsZoomCanvas', '同一张照片，整幅一起缩小') +
+      '<div class="freq-zoom-side">' +
+      '<button class="stage-btn" id="hvsZoomPlay">暂停</button>' +
+      '<p class="note" id="hvsZoomInfo">原图 ' + state.width + '×' + state.height +
+      ' → 显示 300×300 像素 · 整幅还在大尺寸：橙框那片密纹理看得清——这里就是高频。</p>' +
+      '<p class="note">整幅一起缩小时，细纹先并成色块，山脊、天空和大块明暗却一直认得出来——人眼真正敏感的是低频。到头会自动放大回去，可随时暂停。</p>' +
+      '</div></div></div>' +
       '<div class="hvs-conclusion">同一把尺子（z 轴 0–255）下：低频区相邻像素差只有 ' +
       fields.photoLow.activity.toFixed(1) + '，是缓坡；高频区 ' + fields.photoHigh.activity.toFixed(1) +
       '，是密密的锯齿。人眼跟得上坡、跟不上锯齿——所以量化敢把高频系数大量置零</div>' +
       '<div class="hvs-hint">按住任意一幅拖动，所有三维视角一起旋转</div>' +
-      '</div>' +
       '</div>';
-  }
-
-  /* 两页切换：只切显示，不重绘，页面不会跳 */
-  function bindFrequencyPager() {
-    const block = document.getElementById('hvsSolidBlock');
-    if (!block) return;
-    const buttons = block.querySelectorAll('.hvs-pager button');
-    const pages = block.querySelectorAll('.hvs-page');
-    Array.prototype.forEach.call(buttons, function (button) {
-      button.addEventListener('click', function () {
-        const page = button.getAttribute('data-freq-page');
-        Array.prototype.forEach.call(buttons, function (item) {
-          item.classList.toggle('on', item === button);
-        });
-        Array.prototype.forEach.call(pages, function (item) {
-          item.hidden = item.getAttribute('data-freq-view') !== page;
-        });
-      });
-    });
   }
 
   function paintFrequencySolid(data) {
     const fields = frequencySolidFields(data);
     hfieldRepaint = function () {
-      drawHeightField3D(setupCanvas('hvsSolidCheckerLow', 460, 380), fields.checkerLow);
-      drawHeightField3D(setupCanvas('hvsSolidCheckerHigh', 460, 380), fields.checkerHigh);
-      drawHeightField3D(setupCanvas('hvsSolidPhotoLow', 330, 285), fields.photoLow);
-      drawHeightField3D(setupCanvas('hvsSolidPhotoHigh', 330, 285), fields.photoHigh);
+      drawHeightField3D(setupCanvas('hvsSolidPhotoLow', 400, 320), fields.photoLow);
+      drawHeightField3D(setupCanvas('hvsSolidPhotoHigh', 400, 320), fields.photoHigh);
     };
     hfieldRepaint();
-    drawRegionMapInto(setupCanvas('hvsRegionMap', 330, 285), data.planes.y, state.width, state.height, fields.regions);
-    ['hvsSolidCheckerLow', 'hvsSolidCheckerHigh', 'hvsSolidPhotoLow', 'hvsSolidPhotoHigh']
+    drawFieldRowCurve(setupCanvas('hvsCurveLow', 360, 110), fields.photoLow, '#1d4ed8');
+    drawFieldRowCurve(setupCanvas('hvsCurveHigh', 360, 110), fields.photoHigh, '#c2410c');
+    const mapW = 400;
+    const mapH = clamp(Math.round(mapW * state.height / Math.max(1, state.width)), 240, 520);
+    drawRegionMapInto(setupCanvas('hvsRegionMap', mapW, mapH), state.rgb, data.planes.y, state.width, state.height, fields.regions);
+    const low = fields.regions.low;
+    const high = fields.regions.high;
+    drawRGBCropInto(setupCanvas('hvsCropLow', 220, 220), state.rgb, state.width, state.height, low);
+    drawRGBCropInto(setupCanvas('hvsCropHigh', 220, 220), state.rgb, state.width, state.height, high);
+    ['hvsSolidPhotoLow', 'hvsSolidPhotoHigh']
       .forEach(function (id) { bindHeightFieldDrag(document.getElementById(id)); });
-    bindFrequencyPager();
+  }
+
+  /* 整体缩小演示：整幅图等比例缩小再放大回去，画面中心与内容都不动。
+     缩小时开启双线性平滑，让高频细纹像眼睛看到的那样并成色块。 */
+  const ZOOM_FULL = 300;
+  const ZOOM_SMALL = 64;
+  let zoomTimer = null;
+  let zoomUpdate = null;
+  let zoomSource = { key: '', canvas: null };
+  const ZOOM_DEMO = { playing: false, progress: 0, direction: 1, hold: 0, last: 0 };
+
+  function stopZoomDemo() {
+    if (zoomTimer) {
+      clearInterval(zoomTimer);
+      zoomTimer = null;
+    }
+    ZOOM_DEMO.playing = false;
+  }
+
+  function zoomSourceCanvas() {
+    const key = state.imageId + '|' + state.width + 'x' + state.height;
+    if (zoomSource.key === key && zoomSource.canvas) return zoomSource.canvas;
+    const canvas = document.createElement('canvas');
+    canvas.width = state.width;
+    canvas.height = state.height;
+    const context = canvas.getContext('2d');
+    const imageData = context.createImageData(state.width, state.height);
+    imageData.data.set(state.rgb.subarray(0, state.width * state.height * 4));
+    context.putImageData(imageData, 0, 0);
+    zoomSource = { key: key, canvas: canvas };
+    return canvas;
+  }
+
+  function zoomDemoText(display) {
+    if (display >= 240) return '整幅还在大尺寸：橙框那片密纹理看得清——这里就是高频。';
+    if (display >= 130) return '整幅一起缩小中：细纹开始并成色块，高频细节先被眼睛忽略。';
+    return '已经很小：只剩山脊、天空与大块明暗——低频撑住了画面。';
+  }
+
+  function drawZoomDemo(target, data, progress) {
+    if (!target) return 0;
+    const regions = frequencySolidFields(data).regions;
+    const t = ANIM.ease.easeInOutSine(clamp(progress, 0, 1));
+    const display = Math.round(ZOOM_FULL + (ZOOM_SMALL - ZOOM_FULL) * t);
+    const displayHeight = Math.round(display * state.height / Math.max(1, state.width));
+    const offsetX = (target.w - display) / 2;
+    const offsetY = (target.h - displayHeight) / 2;
+    const context = target.ctx;
+    context.clearRect(0, 0, target.w, target.h);
+    context.imageSmoothingEnabled = true;
+    context.drawImage(zoomSourceCanvas(), offsetX, offsetY, display, displayHeight);
+    const scale = display / Math.max(1, state.width);
+    [['low', '#1d4ed8'], ['high', '#c2410c']].forEach(function (entry) {
+      const box = regions[entry[0]];
+      context.save();
+      context.strokeStyle = entry[1];
+      context.lineWidth = 1.5;
+      context.strokeRect(offsetX + box.x * scale, offsetY + box.y * scale,
+        Math.max(1.5, box.size * scale), Math.max(1.5, box.size * scale));
+      context.restore();
+    });
+    return display;
+  }
+
+  function startZoomDemo(button) {
+    ZOOM_DEMO.playing = true;
+    ZOOM_DEMO.last = Date.now();
+    if (button) button.textContent = '暂停';
+    const tick = function () {
+      if (!ZOOM_DEMO.playing) return;
+      const now = Date.now();
+      const delta = Math.min(50, now - ZOOM_DEMO.last);
+      ZOOM_DEMO.last = now;
+      if (ZOOM_DEMO.hold > 0) {
+        ZOOM_DEMO.hold -= delta;
+      } else {
+        ZOOM_DEMO.progress += ZOOM_DEMO.direction * delta / ANIM.duration('freqZoom');
+        if (ZOOM_DEMO.progress >= 1) {
+          ZOOM_DEMO.progress = 1;
+          ZOOM_DEMO.direction = -1;
+          ZOOM_DEMO.hold = 700;
+        } else if (ZOOM_DEMO.progress <= 0) {
+          ZOOM_DEMO.progress = 0;
+          ZOOM_DEMO.direction = 1;
+          ZOOM_DEMO.hold = 700;
+        }
+      }
+      if (zoomUpdate) zoomUpdate();
+    };
+    zoomTimer = setInterval(tick, ANIM.interval('freqZoom', 120));
   }
 
   /* 等轴测投影 + 由远及近排序的画家算法，纯 2D 上下文画高度场。 */
@@ -4275,7 +4710,35 @@
     context.fillText('峰谷差 ' + Math.round(field.peak) + ' / 255', 10, 32);
   }
 
-  function drawRegionMapInto(target, plane, width, height, regions) {
+  /* 从原图裁一块彩色区域，放大画到画布（不插值，保留像素颗粒，方便与 3D 高度场对照） */
+  function drawRGBCropInto(target, rgb, width, height, region) {
+    if (!target || !rgb) return;
+    const context = target.ctx;
+    const size = Math.max(1, Math.min(region.size, width, height));
+    const startX = clamp(region.x, 0, Math.max(0, width - size));
+    const startY = clamp(region.y, 0, Math.max(0, height - size));
+    const offscreen = document.createElement('canvas');
+    offscreen.width = size;
+    offscreen.height = size;
+    const offContext = offscreen.getContext('2d');
+    const imageData = offContext.createImageData(size, size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const source = ((startY + y) * width + (startX + x)) * 4;
+        const destination = (y * size + x) * 4;
+        imageData.data[destination] = rgb[source];
+        imageData.data[destination + 1] = rgb[source + 1];
+        imageData.data[destination + 2] = rgb[source + 2];
+        imageData.data[destination + 3] = 255;
+      }
+    }
+    offContext.putImageData(imageData, 0, 0);
+    context.clearRect(0, 0, target.w, target.h);
+    context.imageSmoothingEnabled = false;
+    context.drawImage(offscreen, 0, 0, target.w, target.h);
+  }
+
+  function drawRegionMapInto(target, rgb, plane, width, height, regions) {
     if (!target) return;
     const context = target.ctx;
     context.clearRect(0, 0, target.w, target.h);
@@ -4290,33 +4753,41 @@
     offscreen.height = height;
     const offContext = offscreen.getContext('2d');
     const imageData = offContext.createImageData(width, height);
-    for (let i = 0; i < width * height; i++) {
-      const value = clamp(Math.round(plane[i]), 0, 255);
-      imageData.data[i * 4] = value;
-      imageData.data[i * 4 + 1] = value;
-      imageData.data[i * 4 + 2] = value;
-      imageData.data[i * 4 + 3] = 255;
+    if (rgb && rgb.length >= width * height * 4) {
+      imageData.data.set(rgb.subarray(0, width * height * 4));
+    } else {
+      for (let i = 0; i < width * height; i++) {
+        const value = clamp(Math.round(plane[i]), 0, 255);
+        imageData.data[i * 4] = value;
+        imageData.data[i * 4 + 1] = value;
+        imageData.data[i * 4 + 2] = value;
+        imageData.data[i * 4 + 3] = 255;
+      }
     }
     offContext.putImageData(imageData, 0, 0);
     context.fillStyle = '#0f172a';
     context.fillRect(0, 0, target.w, target.h);
+    context.imageSmoothingEnabled = true;
     context.drawImage(offscreen, offsetX, offsetY, drawWidth, drawHeight);
 
     const marks = [[regions.low, '#1d4ed8', '低频'], [regions.high, '#c2410c', '高频']];
-    context.lineWidth = 2;
-    context.font = '600 10.5px "Microsoft YaHei", sans-serif';
+    context.lineWidth = 2.5;
+    context.font = '600 11px "Microsoft YaHei", sans-serif';
     context.textAlign = 'left';
-    context.textBaseline = 'alphabetic';
+    context.textBaseline = 'middle';
     marks.forEach(function (mark) {
       const region = mark[0];
       const x = offsetX + region.x * scale;
       const y = offsetY + region.y * scale;
       const size = region.size * scale;
       context.strokeStyle = mark[1];
-      context.strokeRect(x, y, size, size);
-      const labelY = y > 14 ? y - 4 : y + size + 12;
+      context.strokeRect(x + 1, y + 1, size - 2, size - 2);
+      const labelWidth = context.measureText(mark[2]).width + 12;
+      const labelY = y > 22 ? y - 19 : y + 4;
+      context.fillStyle = 'rgba(255,255,255,0.92)';
+      context.fillRect(x, labelY, labelWidth, 16);
       context.fillStyle = mark[1];
-      context.fillText(mark[2], x, labelY);
+      context.fillText(mark[2], x + 6, labelY + 8);
     });
   }
 
@@ -4594,6 +5065,8 @@
 
   function stopVisualAnimations() {
     stopZigzag();
+    stopLumaDemo();
+    stopZoomDemo();
     ['quantTimer', 'rleTimer', 'bitTimer', 'decodeTimer', 'idctTimer', 'tourTimer', 'dctPassTimer', 'dctSumTimer', 'assemblyTimer'].forEach(function (key) {
       if (state[key]) {
         clearInterval(state[key]);
@@ -4928,9 +5401,11 @@
     drawCells({ canvas: restoredCanvas, ctx: restoredCanvas.getContext('2d'), w: 260, h: 260 },
       reconstructed, grayColor, { text: function (value) { return String(Math.round(value)); }, gridColor: 'rgba(255,255,255,0.55)' });
     const error = new Float64Array(64);
-    for (let i = 0; i < 64; i++) error[i] = Math.abs(reconstructed[i] - (block.pixels[i] + 128)) * 10;
+    for (let i = 0; i < 64; i++) error[i] = reconstructed[i] - (block.pixels[i] + 128);
+    const errorMaximum = idctErrorMaximum(block, decoded);
     drawCells({ canvas: errorCanvas, ctx: errorCanvas.getContext('2d'), w: 260, h: 260 },
-      error, grayColor, { gridColor: 'rgba(255,255,255,0.55)' });
+      error, function (value) { return heatColor(value, errorMaximum); },
+      { gridColor: 'rgba(255,255,255,0.55)' });
     if (readout) {
       readout.textContent = '已叠加 ' + state.idctStep + '/64 个基函数' +
         (state.idctStep >= 64 ? '，IDCT 完成。' : '。');

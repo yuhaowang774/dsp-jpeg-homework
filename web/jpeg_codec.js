@@ -581,6 +581,8 @@
     decode: decode,
     rgbToYCbCr: rgbToYCbCr,
     ycbcrToRgb: ycbcrToRgb,
+    downsample: downsample,
+    upsampleBilinear: upsampleBilinear,
     psnr: psnr,
     dct2: dct2,
     idct2: idct2,

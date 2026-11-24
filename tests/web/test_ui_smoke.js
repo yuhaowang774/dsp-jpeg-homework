@@ -113,6 +113,9 @@ const sandbox = {
   window: window,
   document: document,
   console: console,
+  getComputedStyle: function () {
+    return { getPropertyValue: function () { return '#94a3b8'; } };
+  },
   atob: function (text) { return Buffer.from(text, 'base64').toString('binary'); },
   performance: { now: function () { return 0; } },
   requestAnimationFrame: function () { return 1; },
@@ -180,7 +183,7 @@ function findFlowIndex(predicate) {
 const expectedByStepId = {
   source: ['sourceCanvas', 'blockPreview'],
   color: ['colorRGB', 'colorY', 'colorCb', 'colorCr'],
-  subsample: ['subCbOriginal', 'subCrOriginal', 'subCbSmall', 'subCrSmall'],
+  subsample: ['subCbOriginal', 'subCrOriginal', 'subCbSmall', 'subCrSmall', 'subCropBefore', 'subCropAfter'],
   block: ['blockY', 'blockCb', 'blockCr'],
   quant: ['quantTable', 'quantCoeff', 'quantError'],
   zigzag: ['zigMain', 'zigSeq'],
@@ -193,7 +196,7 @@ const expectedByStepId = {
   recolor: ['finalOriginal', 'finalDecoded', 'finalError'],
   visualLuma: ['hvsLumaOrig', 'hvsLumaY', 'hvsLumaColor'],
   visualLumaCompare: ['hvsOriginal', 'hvsLowChroma', 'hvsLowLuma'],
-  visualFreq: ['hvsGray', 'hvsOnlyLow', 'hvsOnlyHigh']
+  visualFreq: ['hvsRegionMap', 'hvsCropLow', 'hvsCropHigh', 'hvsSolidPhotoLow', 'hvsSolidPhotoHigh', 'hvsZoomCanvas', 'hvsZoomPlay', 'hvsZoomInfo']
 };
 
 const expectedByDctView = {
@@ -352,6 +355,8 @@ test('质量、采样、分量与样例切换均可重建', function () {
     const button = store.subButtons.children.find(function (item) { return item.getAttribute('data-sub') === mode; });
     button.fire('click');
     assert.ok(store.stepParams.innerHTML.indexOf(labels[mode]) >= 0);
+    assert.ok(store.stage.innerHTML.indexOf('subCropBefore') >= 0, '缺少局部对比画布');
+    assert.ok(store.subCropNote.innerHTML.indexOf('色度最大偏差') >= 0, '缺少局部对比读数');
   });
   goTo(blockIndex);
   ['Y', 'Cb', 'Cr'].forEach(function (component) {

@@ -10,6 +10,7 @@ colors = [0 114 178;213 94 0;0 158 115]/255;
 methods = ["custom_jpeg","custom_uniform","matlab_jpeg"];
 methodLabels = ["自编：频率加权","自编：等步长","MATLAB参考"];
 styles = {'-o','--s',':^'};
+imageStyles = {'-o','--s',':^','-d'};
 
 % 图1：如实展示数据来源，避免把合成样本伪装为真实照片。
 figureHandle = new_figure([1150 760]);
@@ -108,6 +109,7 @@ for panelIndex = 1:6
     if panelIndex==4
         magnitude = max(1,max(abs(quantized(:))));
         clim(axesHandle,[-magnitude,magnitude]);
+        colormap(axesHandle,diverging_map());
     end
     colorbar(axesHandle);
     title(axesHandle,panelTitles(panelIndex),'FontSize',11);
@@ -119,7 +121,7 @@ save_figure(figureHandle,figureDirectory,'04_block_pipeline');
 % 图5：零系数比例并不等于压缩率，分别绘制两者以防混淆。
 figureHandle = new_figure([1250 480]);
 layout = tiledlayout(figureHandle,1,2,'Padding','compact','TileSpacing','compact');
-palette = [colors;0.8 0.47 0.65];
+palette = [colors;0.45 0.30 0.45];
 for panelIndex = 1:2
     axesHandle = nexttile(layout);
     hold(axesHandle,'on');
@@ -131,8 +133,8 @@ for panelIndex = 1:2
         else
             values = rows.CompressionRatio;
         end
-        plot(axesHandle,rows.Quality,values,'-o','Color',palette(imageIndex,:), ...
-            'LineWidth',1.5,'MarkerSize',5);
+        plot(axesHandle,rows.Quality,values,imageStyles{imageIndex}, ...
+            'Color',palette(imageIndex,:),'LineWidth',1.5,'MarkerSize',5);
     end
     xlabel(axesHandle,'质量参数 Q（不是画质百分比）');
     if panelIndex==1
@@ -175,4 +177,20 @@ function save_figure(figureHandle,outputDirectory,stem)
 exportgraphics(figureHandle,fullfile(outputDirectory,[stem '.png']),'Resolution',300);
 exportgraphics(figureHandle,fullfile(outputDirectory,[stem '.pdf']),'ContentType','vector');
 close(figureHandle);
+end
+
+function map = diverging_map()
+%DIVERGING_MAP 有符号系数色标：负=冷蓝、0=浅中性、正=暖红，色值与网页端 CSS 变量一致。
+levels = 128;
+t = linspace(0,1,levels)';
+blue = [26 88 154]/255;
+neutral = [238 242 247]/255;
+red = [255 65 65]/255;
+map = zeros(levels,3);
+negative = t < 0.5;
+weight = 2*t(negative);
+map(negative,:) = weight*blue + (1-weight)*neutral;
+positive = ~negative;
+weight = 2*t(positive) - 1;
+map(positive,:) = (1-weight)*neutral + weight*red;
 end
