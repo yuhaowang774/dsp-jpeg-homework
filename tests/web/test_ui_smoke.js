@@ -87,9 +87,11 @@ function element(id, tag) {
         const idMatch = /id="([^"]+)"/.exec(attrs);
         const actionMatch = /data-action="([^"]+)"/.exec(attrs);
         const indexMatch = /data-index="([^"]+)"/.exec(attrs);
+        const coeffMatch = /data-coeff="([^"]+)"/.exec(attrs);
         if (idMatch) { button.id = idMatch[1]; store[button.id] = button; }
         if (actionMatch) button.attrs['data-action'] = actionMatch[1];
         if (indexMatch) button.attrs['data-index'] = indexMatch[1];
+        if (coeffMatch) button.attrs['data-coeff'] = coeffMatch[1];
         node.children.push(button);
       }
     }
@@ -159,7 +161,7 @@ const sandbox = {
 };
 vm.createContext(sandbox);
 
-['web/photos.js', 'web/demo_data.js', 'web/color_reference.js', 'web/jpeg_codec.js'].forEach(function (file) {
+['web/photos.js', 'web/demo_data.js', 'web/color_reference.js', 'web/matlab_results.js', 'web/jpeg_codec.js'].forEach(function (file) {
   vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), sandbox, { filename: file });
 });
 
@@ -230,7 +232,11 @@ const expectedByStepId = {
   recolor: ['finalOriginal', 'finalDecoded', 'finalError'],
   visualLuma: ['hvsLumaOrig', 'hvsLumaY', 'hvsLumaColor'],
   visualLumaCompare: ['hvsOriginal', 'hvsLowChroma', 'hvsLowLuma'],
-  visualFreq: ['hvsRegionMap', 'hvsCropLow', 'hvsCropHigh', 'hvsSolidPhotoLow', 'hvsSolidPhotoHigh', 'hvsZoomCanvas', 'hvsZoomPlay', 'hvsZoomInfo']
+  visualFreq: ['hvsRegionMap', 'hvsCropLow', 'hvsCropHigh', 'hvsSolidPhotoLow', 'hvsSolidPhotoHigh', 'hvsZoomCanvas', 'hvsZoomPlay', 'hvsZoomInfo'],
+  matlabColor: ['matlabColorChart'],
+  matlabRate: ['matlabRateChart'],
+  matlabSparsity: ['matlabSparsityChart'],
+  matlabMatchedRate: ['matlabMatchedChart']
 };
 
 const expectedByDctView = {
@@ -395,6 +401,32 @@ test('所有工具按钮触发的动画不抛错并产生读数', function () {
   assert.ok(store.idctReadout.textContent.length > 0);
 });
 
+test('量化页：QF 拉杆联动四宫格与置零读数', function () {
+  const quantIndex = findFlowIndex(function (entry) { return page.STEPS[entry.step].id === 'quant'; });
+  goTo(quantIndex);
+  const html = store.stage.innerHTML;
+  assert.ok(html.indexOf('quantQfRange') >= 0, '缺少 QF 拉杆');
+  assert.ok(html.indexOf('qfScale') >= 0, '缺少 scale 读数');
+  assert.ok(html.indexOf('qfMini0') < 0 && html.indexOf('qfCurve') < 0, 'QF 面板应只留拉杆，不再画三档小图与曲线');
+  function zerosAt() {
+    const matched = /置零系数<\/span><b>(\d+) \/ 64/.exec(store.stepParams.innerHTML);
+    assert.ok(matched, '缺少置零系数读数');
+    return Number(matched[1]);
+  }
+  const defaultZeros = zerosAt();
+  /* QF 调小 → 步长变大 → 归零的格变多；读数与统计卡都走同一个 quantView() */
+  store.quantQfRange.value = '10';
+  store.quantQfRange.fire('input');
+  store.quantQfRange.fire('change');
+  assert.ok(zerosAt() > defaultZeros, 'QF 调小后置零数没有增加：' + zerosAt());
+  assert.strictEqual(store.qfFootQuality.textContent, '10', '统计卡没跟上 QF');
+  /* 复位，后面的用例仍按默认 QF=50 断言 */
+  store.quantQfRange.value = '50';
+  store.quantQfRange.fire('input');
+  store.quantQfRange.fire('change');
+  assert.strictEqual(zerosAt(), defaultZeros, '复位 QF=50 后置零数未回到默认值');
+});
+
 test('DCT 行列分解视图：三张矩阵 + 当前行宽图，不含图注/读数/返回按钮', function () {
   goTo(twoPassIndex);
   const tools = store.stepTools.children;
@@ -446,6 +478,23 @@ test('DCT 重建视图：64 张基图索引随步进高亮，点选可定位到�
   assert.strictEqual(stackedCount(), first, '重复点同一格应停在同一项');
 });
 
+test('DCT 二维系数视图：逐项巡览一拍一项，手动步进后暂停', function () {
+  goTo(dctCoeffIndex);
+  const info = store.coeffTourInfo;
+  assert.ok(info, '缺少巡览读数条');
+  assert.ok(/第 1 \/ 64 项/.test(info.textContent), '巡览未从第 1 项开始：' + info.textContent);
+  /* 进入该页会自动开始巡览：一拍走一项，读数条跟着换 */
+  pump(1);
+  assert.ok(/第 2 \/ 64 项/.test(info.textContent), '自动巡览没有前进：' + info.textContent);
+  const next = store.stage.children.filter(function (button) {
+    return button.getAttribute('data-coeff') === 'next';
+  })[0];
+  assert.ok(next, '缺少“下一项”按钮');
+  next.fire('click');
+  assert.ok(/第 3 \/ 64 项/.test(info.textContent), '手动步进没有前进：' + info.textContent);
+  assert.strictEqual(store.coeffPlay.textContent, '播放', '手动步进后巡览应暂停');
+});
+
 test('游程编码页：前 4 个典型符号的解剖卡', function () {
   goTo(rleIndex);
   const html = store.stage.innerHTML;
@@ -478,6 +527,59 @@ test('Huffman 页合并展示位流与 T.81 标准表，独立的 Huffman 表节
   assert.ok(html.indexOf('码字从哪里查') < 0, '表标题已删除，不应再渲染');
   assert.ok(html.indexOf('本块位流 · 一格') < 0, '位流标题已删除，不应再渲染');
   assert.ok(html.indexOf('huff-saving') < 0, '收益读数已删除，不应再渲染');
+});
+
+test('MATLAB 实测节点：四页图表均由导出的实测数据驱动', function () {
+  const data = sandbox.window.MATLAB_RESULTS;
+  assert.ok(data, '缺少 web/matlab_results.js');
+  assert.strictEqual(data.rows.length, 120, '实测组数应为 120');
+  assert.strictEqual(data.images.length, 4, '应有 4 张输入图');
+  assert.strictEqual(data.qualities.length, 10, '应有 10 档 Q');
+  assert.strictEqual(data.matchedRate.length, 16, '应有 16 个等码率插值点');
+  /* 前端按方法下标配线型（0 蓝实线 / 1 橙虚线 / 2 青点线），顺序必须与导出脚本一致。
+     sandbox 里的数组原型与宿主不同，deepStrictEqual 会因原型差异失败，改成比对拼接串。 */
+  assert.strictEqual(data.methods.map(function (method) { return method.key; }).join(','),
+    'custom_jpeg,custom_uniform,matlab_jpeg', '方法顺序与前端线型约定不一致');
+
+  /* 10.1 是风景照片自己的彩色实测：直接用 color_reference.js，屏幕上的每个点都要能对上
+     results/color_measurements.csv，所以这里连“30 组 / 3 种采样”一起断言 */
+  const color = sandbox.window.COLOR_REFERENCE;
+  assert.ok(color, '缺少 web/color_reference.js');
+  assert.strictEqual(color.cases.length, 30, '彩色实测应为 30 组');
+  assert.strictEqual(color.cases.map(function (item) { return item.subsampling; })
+    .filter(function (value, index, list) { return list.indexOf(value) === index; }).sort().join(','),
+  '420,422,444', '彩色实测应覆盖三种采样');
+
+  const colorIndex = findFlowIndex(function (entry) { return page.STEPS[entry.step].id === 'matlabColor'; });
+  goTo(colorIndex);
+  assert.ok(store.stage.innerHTML.indexOf('matlab-legend') >= 0, '彩色页缺少图例');
+  assert.ok(store.matlabColorChart.width > 0, '彩色页画布未绘制');
+  assert.strictEqual(page.chapterLabel(flowEntries[colorIndex]), '10.1');
+
+  const rateIndex = findFlowIndex(function (entry) { return page.STEPS[entry.step].id === 'matlabRate'; });
+  goTo(rateIndex);
+  assert.ok(store.stage.innerHTML.indexOf('matlab-legend') >= 0, '率失真页缺少图例');
+  assert.ok(store.matlabRateChart.width > 0, '率失真画布未绘制');
+  assert.strictEqual(page.chapterLabel(flowEntries[rateIndex]), '10.2');
+
+  const sparsityIndex = findFlowIndex(function (entry) { return page.STEPS[entry.step].id === 'matlabSparsity'; });
+  goTo(sparsityIndex);
+  assert.ok(store.matlabSparsityChart.width > 0, '稀疏度画布未绘制');
+  assert.strictEqual(page.chapterLabel(flowEntries[sparsityIndex]), '10.3');
+
+  const matchedIndex = findFlowIndex(function (entry) { return page.STEPS[entry.step].id === 'matlabMatchedRate'; });
+  goTo(matchedIndex);
+  assert.ok(store.matlabMatchedChart.width > 0, '等码率画布未绘制');
+  assert.ok(store.stage.innerHTML.indexOf('16 个插值点明细') >= 0, '缺少等码率明细表');
+  assert.strictEqual(page.chapterLabel(flowEntries[matchedIndex]), '10.4');
+
+  /* 章内顺序：彩色（风景照片）必须先于灰度 120 组 */
+  const chapterOrder = flowEntries
+    .filter(function (entry) { return entry.chapter === 'matlab'; })
+    .map(function (entry) { return page.STEPS[entry.step].id; })
+    .join(',');
+  assert.strictEqual(chapterOrder, 'matlabColor,matlabRate,matlabSparsity,matlabMatchedRate',
+    'MATLAB 章节点顺序不对');
 });
 
 test('默认 4:2:0 下色度局部对比与读数完整', function () {

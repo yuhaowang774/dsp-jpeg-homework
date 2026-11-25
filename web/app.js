@@ -5,6 +5,7 @@
  *   window.DEMO_PHOTOS      样例照片像素（photos.js）
  *   window.DEMO_DATA        合成样例像素（demo_data.js）
  *   window.COLOR_REFERENCE  色彩参考数据（color_reference.js）
+ *   window.MATLAB_RESULTS   MATLAB 批量实测数据（matlab_results.js）
  *   window.JpegCodec        JPEG 编解码实现（jpeg_codec.js）
  *
  * 分区：通用工具 / 各步骤可视化 / 步骤导航 / 一屏装下 / 动画 / 事件绑定 / 初始化
@@ -40,9 +41,13 @@
       basis: { trigger: '步骤05 余弦叠加按钮', duration: 2800, easing: 'linear', transition: '一维余弦波逐项累加 + 残差回落（匀速，每 1/8 时长加一项）' },
       /* 64 项铺满 10.24 秒，一项一拍 160ms，匀速不跳格 */
       basissum: { trigger: '步骤05 逐项叠加重建按钮', duration: 10240, easing: 'linear', transition: '二维 64 项按 |F| 降序叠加 + 重建块逼近原块' },
+      /* 64 项铺满 9.6 秒，一格一拍 150ms，走完一轮停一下再从头巡览 */
+      coefftour: { trigger: '步骤05 逐项巡览按钮', duration: 9600, easing: 'linear', transition: '64 张基图按 (u,v) 顺序逐个高亮 + 三联图同步更换' },
       /* 16 拍（8 行 + 8 列）铺满 12.8 秒，一拍 800ms，够看清每行/每列的结果 */
       twopass: { trigger: '步骤05 行列分解按钮', duration: 12800, easing: 'linear', transition: '每拍一行/一列，匀速扫过' },
       quant: { trigger: '步骤06 量化按钮', duration: 2300, easing: 'steps', transition: '量化系数逐格替换' },
+      /* QF 从 100 匀速走到 5：四宫格、三档对照与曲线标线同步变，40 拍铺满 3.2 秒 */
+      qfsweep: { trigger: '步骤06 QF 扫掠按钮', duration: 3200, easing: 'easeInOutSine', transition: 'QF 100 → 5，量化步长变大、置零格增多' },
       /* 64 个系数铺满 6.4 秒，一拍 100ms；自动循环播放时能逐个看清填进右图的数 */
       zigzag: { trigger: '步骤07 Zigzag 按钮', duration: 6400, easing: 'steps', transition: '扫描游标 + 序列条带' },
       rle: { trigger: '步骤08 游程按钮', duration: 3200, easing: 'steps', transition: '符号表行高亮 + 条带游标' },
@@ -124,6 +129,11 @@
     dctSumStep: 64,
     assemblyStep: 0,
     quantTimer: null,
+    qfTimer: null,
+    qfReturn: null,
+    /* 上一次真正参与编码的 QF：拖动拉杆后编码结果可能落后于 state.Q，
+       切页前用它判断要不要先补一次重编码 */
+    encodedQuality: null,
     rleTimer: null,
     bitTimer: null,
     decodeTimer: null,
@@ -135,6 +145,8 @@
     dctPassHold: null,
     dctBasisHold: null,
     dctSumHold: null,
+    coeffTourTimer: null,
+    coeffTourHold: null,
     assemblyTimer: null
   };
 
@@ -459,9 +471,11 @@
     }
   }
 
+  /* rows = [标签, 数值, 可选 id]：给出 id 的项留在 DOM 里，拖动 QF 时可原地刷新 */
   function statBlock(rows) {
     return '<div class="stats">' + rows.map(function (row) {
-      return '<div><span>' + escapeHTML(row[0]) + '</span><b>' + row[1] + '</b></div>';
+      return '<div><span>' + escapeHTML(row[0]) + '</span><b' +
+        (row[2] ? ' id="' + row[2] + '"' : '') + '>' + row[1] + '</b></div>';
     }).join('') + '</div>';
   }
 
@@ -714,6 +728,33 @@
   /* 编码 / 解码                                                         */
   /* ------------------------------------------------------------------ */
 
+  /* 只按当前 state.Q / 采样格式重新编码，不动演示台的播放状态。
+     量化页拖 QF 拉杆时先在前端现算这一块，松手后靠它把整幅编码补齐。 */
+  function encodeCurrent() {
+    const cacheKey = state.imageId + '|' + state.width + 'x' + state.height + '|' + state.Q + '|' + state.subsampling;
+    const cached = rebuildCache.get(cacheKey);
+    if (cached) {
+      state.encoded = cached.encoded;
+      state.decoded = cached.decoded;
+      state.psnr = cached.psnr;
+    } else {
+      state.encoded = Codec.encode(state.rgb, state.width, state.height, {
+        quality: state.Q,
+        subsampling: state.subsampling
+      });
+      state.decoded = Codec.decode(state.encoded);
+      state.psnr = Codec.psnr(state.rgb, state.decoded.rgb);
+      if (rebuildCache.size >= 8) rebuildCache.delete(rebuildCache.keys().next().value);
+      rebuildCache.set(cacheKey, { encoded: state.encoded, decoded: state.decoded, psnr: state.psnr });
+    }
+    state.encodedQuality = state.Q;
+    state.assemblyStep = state.encoded.mcus.length;
+    const maxBlockX = Math.ceil(state.width / 8) - 1;
+    const maxBlockY = Math.ceil(state.height / 8) - 1;
+    state.blockX = clamp(state.blockX, 0, maxBlockX);
+    state.blockY = clamp(state.blockY, 0, maxBlockY);
+  }
+
   function rebuild() {
     try {
       stopVisualAnimations();
@@ -732,27 +773,7 @@
       state.dctRowStep = 8;
       state.dctColStep = 8;
       state.assemblyStep = 0;
-      const cacheKey = state.imageId + '|' + state.width + 'x' + state.height + '|' + state.Q + '|' + state.subsampling;
-      const cached = rebuildCache.get(cacheKey);
-      if (cached) {
-        state.encoded = cached.encoded;
-        state.decoded = cached.decoded;
-        state.psnr = cached.psnr;
-      } else {
-        state.encoded = Codec.encode(state.rgb, state.width, state.height, {
-          quality: state.Q,
-          subsampling: state.subsampling
-        });
-        state.decoded = Codec.decode(state.encoded);
-        state.psnr = Codec.psnr(state.rgb, state.decoded.rgb);
-        if (rebuildCache.size >= 8) rebuildCache.delete(rebuildCache.keys().next().value);
-        rebuildCache.set(cacheKey, { encoded: state.encoded, decoded: state.decoded, psnr: state.psnr });
-      }
-      state.assemblyStep = state.encoded.mcus.length;
-      const maxBlockX = Math.ceil(state.width / 8) - 1;
-      const maxBlockY = Math.ceil(state.height / 8) - 1;
-      state.blockX = clamp(state.blockX, 0, maxBlockX);
-      state.blockY = clamp(state.blockY, 0, maxBlockY);
+      encodeCurrent();
       render();
     } catch (error) {
       stage.innerHTML = '<p class="error">编码失败：' + escapeHTML(error.message) + '</p>';
@@ -944,23 +965,28 @@
     {
       id: 'quant', short: '量化', tag: '编码 05',
       title: '量化：系数域中的有损步骤',
-      lead: '每个系数都做一次「除以步长 → 四舍五入」；点矩阵任意一格，可以看这一格完整的算式。',
-      principle: '<p>四个矩阵从上到下就是一条流水线：原始系数 F 除以这一格的量化步长 q，得到商 F/q，再四舍五入成整数 Fq。商落在 ±0.5 之内就归 0，这一格整格被丢掉。</p><p>量化表按人眼对比度敏感度设计：<b>低频步长小、高频步长大</b>，所以高频的 F/q 更容易落进 ±0.5 被清零。质量因子 QF 整体缩放量化表，QF 越小步长越大、丢得越多。</p><p>DCT 和熵编码都可逆，量化是整条链路里唯一真正丢信息的地方。</p>',
-      formula: 'Fq(u,v) = round( F(u,v) / q(u,v) )\nround(x)：x ≥ 0 时 ⌊x+0.5⌋，x < 0 时 ⌈x−0.5⌉\n即 |x| < 0.5 → 0；|x| ≥ 0.5 → 最近的整数\nq(u,v)=round(Qbase(u,v)×scale(QF)/100)\nQF<50  scale=5000/QF；QF≥50  scale=200−2QF',
-      tips: ['点击任一格，看 F → q → F/q → Fq 的完整算式', '③ 的浅橙底 = 商不足半个步长，必被置零', '红叉 = 最终被量化为 0 的系数', 'QF=100 也不保证逐像素无损'],
+      lead: '同一个 8×8 块，F 一个数都不改，只把质量因子 QF 从 100 拖到 1：步长变大 → 商变小 → 归零的格越来越多。',
+      principle: '<p><b>一条四格流水线。</b>原始系数 F 除以这一格的量化步长 q，得到商 F/q，再四舍五入成整数 Fq。商落在 ±0.5 之内就归 0，这一格整格被丢掉。</p>' +
+        '<p><b>量化表按人眼设计。</b>低频步长小、高频步长大，所以高频的 F/q 更容易落进 ±0.5 被清零——这条与第 02 章「人眼对高频不敏感」对上了。</p>' +
+        '<p><b>QF 不改 F，只缩放量化表。</b>scale(QF) 在 QF &lt; 50 段取 5000/QF（双曲，越往小越陡），QF ≥ 50 段取 200−2QF（线性），所以 <b>QF = 50 是斜率换挡点</b>。同一格：q 变大 → 半个步长 q/2 变大 → 更多系数掉进 |F| &lt; q/2 的置零区。右侧拉杆与曲线就是把这条因果链一路走给观众看。</p>',
+      formula: 'Fq(u,v) = round( F(u,v) / q(u,v) )\n' +
+        'round(x)：x ≥ 0 时 ⌊x+0.5⌋，x < 0 时 ⌈x−0.5⌉\n' +
+        '置零条件：|F ÷ q| < 0.5  ⇔  |F(u,v)| < q(u,v)/2\n' +
+        'q(u,v) = round( Qbase(u,v) × scale(QF) / 100 )\n' +
+        'QF<50  scale=5000/QF；QF≥50  scale=200−2QF',
+      tips: ['拖动右侧拉杆或点三个参考档，四宫格与置零数会跟着重算', 'q 变大 → 半个步长 q/2 变大 → 更多格落进置零区', '曲线在 QF = 50 处换挡：左侧双曲、右侧线性', 'QF=100 也不保证逐像素无损，取整误差始终存在'],
       params: function () {
-        const block = encodedBlock();
-        let zeros = 0;
-        for (let i = 0; i < 64; i++) if (block.quantized[i] === 0) zeros += 1;
+        const view = quantView();
         return [
           ['质量因子 QF', state.Q],
-          ['q(u,v) 范围', Math.min.apply(null, Array.from(block.quant)) + '–' + Math.max.apply(null, Array.from(block.quant))],
-          ['置零系数', zeros + ' / 64'],
-          ['零系数占比', (100 * zeros / 64).toFixed(1) + '%']
+          ['q(u,v) 范围', view.minimum + '–' + view.maximum],
+          ['置零系数', view.zeros + ' / 64'],
+          ['零系数占比', (100 * view.zeros / 64).toFixed(1) + '%']
         ];
       },
       tools: function () {
-        return '<button class="primary" data-action="quant">播放量化过程</button>';
+        return '<button class="primary" data-action="quant">播放量化过程</button>' +
+          '<button data-action="qfsweep">QF 扫掠 100 → 5</button>';
       }
     },
     {
@@ -1219,6 +1245,101 @@
           '<button data-action="goto" data-target="freq">跳到 02 低 / 高频</button>';
       }
     },
+    /* 10 章：MATLAB 批量实测结果。四页只做绘图，不重算实验：
+       页 1 读 web/color_reference.js（src/run_color_experiment.m 生成的彩色 30 组，输入就是网页默认的风景照片），
+       页 2–4 读 web/matlab_results.js（tools/export_matlab_results.py 从 results/*.csv 导出的灰度 120 组），
+       数值都能和 results/ 里的 CSV、纪要逐行对照。 */
+    {
+      id: 'matlabColor', short: '彩色实测', tag: '实测 01',
+      title: 'MATLAB 实测：风景照片的彩色率失真',
+      lead: '同一张 1024×1024 的风景照片，在 QF = 5…100 与 4:4:4 / 4:2:2 / 4:2:0 三种采样下各压一遍，共 30 组实测：体积与画质怎么换。',
+      principle: '<p><b>为什么先看这一页。</b>网页的默认示例就是这张照片（同一份像素，由无损 PNG 导出），所以这里的每个点都能和页面上的编码结果对上：网页复算的熵位数、零系数占比、PSNR 与 MATLAB 完全相同，<code>tests/web/test_color_reference.js</code> 逐位断言过。</p>' +
+        '<p><b>左图怎么读。</b>一条线是同一采样格式下 10 个 QF 的实测点，横轴是完整文件码率，纵轴是 PSNR。低码率端三条线几乎挤在一起——此时误差主要来自量化，色度降不降采样只差零点几 dB。</p>' +
+        '<p><b>右图是色度降采样的价码。</b>纵轴是同 QF 下 4:2:2 / 4:2:0 的文件体积占 4:4:4 的百分比。<b>它不是一条水平线</b>：两端约 55–70%、中段约 71%，所以「4:2:0 省 30% 体积」只在特定 QF 成立，别当成常数。</p>' +
+        '<p><b>高码率端的反转。</b>QF = 100 时 4:4:4 已接近无损，4:2:0 仍差十几 dB：这时主要误差不再是量化，而是被砍掉的色度细节。三种采样的亮度 PSNR 完全相同，差距全在 Cb/Cr。</p>',
+      formula: 'bpp = 完整文件字节 × 8 / (1024 × 1024)\n体积占比 = 子采样文件字节 / 同 QF 的 4:4:4 文件字节\n亮度 PSNR 三种采样相同 → 差异只在色度通道',
+      tips: ['左图三条线低码率端几乎重合，高码率端才拉开', '右图不是 70% 一条水平线，占比随 QF 变化', 'QF = 100 时 4:2:0 比 4:4:4 低十几 dB', '亮度 PSNR 三者相同，差别全在色度'],
+      params: function () {
+        const data = colorReferenceData();
+        return [
+          ['实测组数', data ? data.points.length + ' 组' : '未找到数据'],
+          ['输入', data ? data.reference.width + '×' + data.reference.height + ' 风景照片（与页面默认示例同源）' : '—'],
+          ['Q / 采样', '10 档 / 4:4:4、4:2:2、4:2:0'],
+          ['生成时间', data && data.reference.generatedAt ? data.reference.generatedAt : '—']
+        ];
+      },
+      tools: function () {
+        return '<button class="primary" data-action="goto" data-target="matlab:1">下一节：灰度 120 组率失真</button>' +
+          '<button data-action="goto" data-target="result">回 09 看逐位对照表</button>';
+      }
+    },
+    {
+      id: 'matlabRate', short: '灰度率失真', tag: '实测 02',
+      title: 'MATLAB 实测：120 组灰度率失真曲线',
+      lead: '4 张 256×256 灰度图 × 10 个 Q × 3 种量化方法，共 120 组实测，全部落在「码率–PSNR」平面上：越靠左上，同样的体积换来更高的画质。',
+      principle: '<p><b>数据从哪来。</b><code>run_project.m</code> 把 4 张图在 Q = 5…100 上各跑三种方法——自编频率加权、自编等步长、MATLAB <code>imwrite</code>——结果写进 <code>results/measurements.csv</code>，本页图表直接由这张表重绘（与 <code>results/figures/02_rate_distortion.png</code> 同一份数据，没有做平滑或拟合）。</p>' +
+        '<p><b>怎么读。</b>横轴是完整文件码率 bpp（含文件头与 FF00 填充），纵轴是 PSNR。同一条线把同一方法的 10 个实测点连起来，只起辅助阅读作用。<b>三条线并不重合</b>：同一个 Q 在三种方法下量化步长不同，写出的字节数也不同，所以「同 Q 比较」并不等于「同码率比较」。</p>' +
+        '<p><b>两条曲线的形状说明了什么。</b>低码率段陡、高码率段平：把明显的高频丢掉很省体积，再往上抠细节则要付出越来越大的码率。Q = 100 附近三条线重新贴近，因为量化步长都趋近 1，差别只剩取整与色度处理。</p>',
+      formula: 'bpp = 完整文件字节 × 8 / (256 × 256)\n压缩比 = 原始像素字节 / 完整文件字节\nPSNR = 10 · log10( 255² / MSE )\n连线仅辅助阅读，实测点之间未插值',
+      tips: ['横轴比的是完整文件字节，不是零系数比例', '同一个 Q 下三种方法的字节数不同，别把同 Q 当同码率', '低码率段很陡：此时再压一点体积，PSNR 掉得很快', 'Q = 100 三条线收拢，量化步长都趋近 1'],
+      params: function () {
+        const data = matlabData();
+        return [
+          ['实测组数', data ? data.rows.length + ' 组' : '未找到数据'],
+          ['图像 / Q / 方法', '4 张 / 10 档 / 3 种'],
+          ['数据来源', 'results/measurements.csv'],
+          ['实验环境', data && data.environment ? data.environment : 'MATLAB R2024b']
+        ];
+      },
+      tools: function () {
+        return '<button class="primary" data-action="goto" data-target="matlab:2">下一节：稀疏度与文件大小</button>' +
+          '<button data-action="goto" data-target="matlab:0">上一节：彩色实测</button>';
+      }
+    },
+    {
+      id: 'matlabSparsity', short: '稀疏度与体积', tag: '实测 03',
+      title: 'MATLAB 实测：稀疏度与文件大小',
+      lead: '同一批实测换个横轴：左边看量化后零系数占多少，右边看真正写出的完整文件有多大。',
+      principle: '<p><b>零系数比例只是中间量。</b>它统计的是量化之后有多少格变成 0，还没经过熵编码。真正决定文件大小的是剩下那些非零系数落在什么符号上、Huffman 给每个符号多长的码字。</p>' +
+        '<p><b>所以两张图的纵轴差别很大。</b>平滑渐变图在 Q = 35 时已有 95% 的系数为 0，压缩比却是四张图里最高的；密集纹理图的零系数掉得最快，但它的压缩比一直最低——非零系数虽然少，幅值大、游程短，反而更「贵」。<b>不能用零系数比例代替压缩比</b>，这也是答辩时常被追问的一点。</p>',
+      formula: '零系数比例 = count(量化后 = 0) / 全部系数\n压缩比 = 原始像素字节 / JPEG 完整文件字节\n文件字节 = 熵编码字节 + 头与标记 + FF00 填充',
+      tips: ['左轴的单位是百分比，右轴是压缩比（倍）', '零系数多不等于文件小，要看非零系数的幅值与分布', '纹理图的零系数掉得最快，压缩比却始终最低', 'Q 不是画质百分比：Q = 100 仍可能因取整而丢信息'],
+      params: function () {
+        const data = matlabData();
+        return [
+          ['统计对象', '自编频率加权（每图 10 档 Q）'],
+          ['左图纵轴', '零系数比例 / %'],
+          ['右图纵轴', '压缩比 = 原始 / 文件'],
+          ['实测点数', data ? '4 图 × 10 档 = 40 点' : '未找到数据']
+        ];
+      },
+      tools: function () {
+        return '<button data-action="goto" data-target="matlab:1">回上一节：灰度率失真</button>' +
+          '<button class="primary" data-action="goto" data-target="matlab:3">下一节：等码率比较</button>';
+      }
+    },
+    {
+      id: 'matlabMatchedRate', short: '等码率比较', tag: '实测 04',
+      title: 'MATLAB 实测：等码率下的量化策略比较',
+      lead: '把两条实测曲线按同一个目标 bpp 插值，再比 PSNR——这才是「同码率」的比较，也才配评价「哪种量化表更好」。',
+      principle: '<p><b>为什么必须换坐标系。</b>加权表与等步长表在同一个 Q 下量化步长不同，写出的字节数也不同。直接比同 Q 的 PSNR，等于让两种方法在不同码率上比赛。</p>' +
+        '<p><b>怎么比。</b>取两条实测曲线共同覆盖的 bpp 区间，各取 4 个目标码率做线性插值，得到同一码率下的两个 PSNR。<b>插值点不是实测点</b>，也没有外推——所以柱状图只说明趋势，不能当新数据引用。</p>' +
+        '<p><b>结论按图说话。</b>辣椒与文字图上等步长反而更高（ΔPSNR 为负），平滑渐变上加权略好。本轮数据不支持「频率加权总是 PSNR 更高」，报告里也照实写了这一点。</p>',
+      formula: 'ΔPSNR = PSNR(频率加权) − PSNR(等步长)\nΔ > 0：同等码率下加权画质更高\n仅在两条曲线的共同覆盖区间内线性插值',
+      tips: ['Δ 为负表示等步长在该码率下更好', '柱高只表示插值差值，不是实测点', '渐变图 Δ 为正、纹理与文字图 Δ 明显为负', '同一张图内 ①②③④ 是它自己的 4 个目标 bpp，跨图不可平移比较'],
+      params: function () {
+        const data = matlabData();
+        return [
+          ['插值点数', data ? data.matchedRate.length + ' 个（4 图 × 4 点）' : '未找到数据'],
+          ['比较量', 'ΔPSNR = 加权 − 等步长'],
+          ['插值方式', '共同区间线性插值，不外推'],
+          ['数据来源', 'results/matched_rate_comparison.csv']
+        ];
+      },
+      tools: function () {
+        return '<button data-action="goto" data-target="matlab:2">回上一节：稀疏度</button>';
+      }
+    },
   ];
 
   const FLOW_OVERRIDES = {
@@ -1315,7 +1436,7 @@
           '<p><b>下方三联图：</b>① 基图长什么样；② 乘上系数后对像素的加减，白提亮、黑压暗；③ 只留这一项能画出什么。</p>' +
           '<p><b>能量集中在左上。</b>自然图像的系数从左上往右下迅速变小，低频十几项常占九成能量——这正是高频可以被砍掉的前提。</p>',
         formula: 'F(u,v) = ΣxΣy f(x,y)·B_uv(x,y)\n单项贡献 = F(u,v)·B_uv(x,y)\n反变换：f = ΣuΣv F(u,v)·B_uv\n能量守恒：Σf² = ΣF²（帕塞瓦尔）',
-        tips: ['系数是权重：正=同相位，负=反相位', '|F| 越大，这一项对还原越重要', '单项画不出原块，64 项相加才行'],
+        tips: ['系数是权重：正=同相位，负=反相位', '|F| 越大，这一项对还原越重要', '单项画不出原块，64 项相加才行', '「逐项巡览」按 (u,v) 顺序自动走完 64 项，三联图同步换'],
         params: function () {
           const block = encodedBlock();
           return [
@@ -1326,7 +1447,8 @@
           ];
         },
         tools: function () {
-          return '<button class="primary" data-action="goto" data-target="dct:5">下一张：叠加重建</button>' +
+          return '<button class="primary" data-action="coefftour">逐项巡览</button>' +
+            '<button data-action="goto" data-target="dct:5">下一张：叠加重建</button>' +
             '<button data-action="prevBlock">上一块</button><button data-action="nextBlock">下一块</button>';
         }
       };
@@ -1412,7 +1534,11 @@
           '看第三张图：差异只在 8×8 块边界上',
           '反复转存不会线性掉质，但每次都会累积一点点',
           'PSNR 高不等于看着好，块边界才是人眼敏感处'
-        ]
+        ],
+        /* 本页末尾接上 MATLAB 批量实验：整条编码流程讲完后，正好用实测数据收口 */
+        tools: function () {
+          return '<button class="primary" data-action="goto" data-target="matlab">下一章：MATLAB 实测数据</button>';
+        }
       };
     }
   };
@@ -1498,12 +1624,24 @@
       if (start >= total) return;
       const code = block.bits.slice(start, Math.min(total, codeEnd));
       const amplitude = block.bits.slice(Math.min(total, codeEnd), Math.min(total, end));
-      const title = symbolLabel(symbol) + '：码字 ' + symbol.code + ' + 幅值位 ' + (symbol.amplitude || '（无）');
+      /* DC / AC 的幅值位对应一个真实系数：−4 写成 011，(0,3) 里的 3 就是它的位数。
+         把数值标在幅值位右边，读者不必自己按补码还原就能对上原始系数。 */
+      const hasValue = symbol.kind === 'DC' || symbol.kind === 'AC';
+      /* 写入动画写到一半时，这个符号的比特还没齐，先不标数值，免得对不上 */
+      const complete = amplitude.length === (symbol.amplitude || '').length;
+      const valueText = hasValue ? String(symbol.value) : '';
+      const title = symbolLabel(symbol) + '：码字 ' + symbol.code +
+        ' + 幅值位 ' + (symbol.amplitude || '（无）') + (hasValue ? ' = ' + valueText : '');
       /* 每组上方标出符号名：读者不用回头查表，就能把「这一小段比特」和「哪个符号」对上 */
       parts.push('<span class="bitgroup" title="' + escapeHTML(title) + '">' +
         '<em class="groupname">' + escapeHTML(symbolLabel(symbol)) + '</em>' +
         (code ? '<i class="codebits">' + colorBits(code) + '</i>' : '') +
-        (amplitude ? '<i class="ampbits">' + colorBits(amplitude) + '</i>' : '') + '</span>');
+        (amplitude
+          ? '<span class="amprow"><i class="ampbits">' + colorBits(amplitude) + '</i>' +
+            (hasValue && complete ? '<em class="ampvalue">= ' + escapeHTML(valueText) + '</em>' : '') +
+            '</span>'
+          : '') +
+        '</span>');
     });
     if (position < total) {
       parts.push('<span class="bitgroup"><i class="codebits">' + colorBits(block.bits.slice(position, total)) + '</i></span>');
@@ -1825,8 +1963,21 @@
       '<figcaption>8 个波完全由公式决定：k 越大，一个 8 点行里塞进的半波越多；黄点是 n = 0…7 的采样位置</figcaption>' +
       '</figure>' +
       '<div class="dct-cosine-formula">' +
-      '<code>C(k, n) = α<sub>k</sub> · cos[ π(n + 1/2)k / 8 ]</code>' +
-      '<span>α<sub>0</sub> = 1/√8，α<sub>k</sub> = 1/2（k &gt; 0）　·　n = 0…7　·　两两正交：Σ<sub>n</sub> C(i,n)·C(j,n) = 0（i ≠ j）</span>' +
+      '<div class="dcf-eq" role="math" aria-label="C(k,n) 等于 αk 乘以 cos 的 π(n+1/2)k 除以 8">' +
+      '<span><i>C</i>(<i>k</i>, <i>n</i>)</span>' +
+      '<span class="dcf-op">=</span>' +
+      '<span><i>α</i><sub><i>k</i></sub></span>' +
+      '<span class="dcf-op">·</span>' +
+      '<span class="dcf-cos">cos</span>' +
+      '<span class="dcf-bracket"></span>' +
+      '<span class="dcf-frac"><span class="dcf-num">π(<i>n</i> + 1/2)<i>k</i></span><span class="dcf-den">8</span></span>' +
+      '<span class="dcf-bracket end"></span>' +
+      '</div>' +
+      '<div class="dcf-legend">' +
+      '<span class="dcf-note"><span class="dcf-m"><i>α</i><sub>0</sub> = 1/<span class="dcf-sqrt">√<span class="dcf-rad">8</span></span>，<i>α</i><sub>k</sub> = 1/2（<i>k</i> &gt; 0）</span></span>' +
+      '<span class="dcf-sep">·</span>' +
+      '<span class="dcf-note"><span class="dcf-m">Σ<sub><i>n</i></sub> <i>C</i>(<i>i</i>,<i>n</i>)·<i>C</i>(<i>j</i>,<i>n</i>) = 0</span>（<span class="dcf-m"><i>i</i> ≠ <i>j</i></span>），两两正交</span>' +
+      '</div>' +
       '</div>';
     drawCosineGrid(setupCanvas('dctCosineGrid', 1240, 620));
   }
@@ -1956,17 +2107,25 @@
     readout.textContent = '右图读法：蓝 = 比平均暗（负），红 = 比平均亮（正），浅色 ≈ 0（与均值相当）。';
   }
 
-  /* ③ 二维视角：系数矩阵 + 单项贡献三联图 */
-  function renderDctBasisView() {
-    const block = encodedBlock();
-    /* 这一页是“系数矩阵 + 64 张基图 + 三联图”三层方形图叠起来，两个主图按满宽放任时
-       总高超过一屏，一屏装下算法只能把三块一起压到 0.4 倍——矩阵格子里的数字会小到
-       看不清、左侧还留一片空白。先按可用高度给两张主图一个上限，让矩阵保持可读尺寸，
-       fit 只做小幅修正；窗口变化时会随整页重绘重新计算。 */
-    const pictureCap = (window.innerWidth || document.documentElement.clientWidth || 1200) >= 900
+  /* 这一页是“系数矩阵 + 64 张基图 + 三联图”三层方形图叠起来，两个主图按满宽放任时
+     总高超过一屏，一屏装下算法只能把三块一起压到 0.4 倍——矩阵格子里的数字会小到
+     看不清、左侧还留一片空白。先按可用高度给两张主图一个上限，让矩阵保持可读尺寸，
+     fit 只做小幅修正；窗口变化时会随整页重绘重新计算。 */
+  function dctPictureCap() {
+    return (window.innerWidth || document.documentElement.clientWidth || 1200) >= 900
       ? clamp(Math.round(stageViewportHeight() * 0.42), 240, 620)
       : 0;
-    stage.innerHTML = '<div class="dct-2d-top"><div class="dct-2d-col">' +
+  }
+
+  /* ③ 二维视角：系数矩阵 + 64 张基图 + 单项贡献三联图 */
+  function renderDctBasisView() {
+    stage.innerHTML = '<div class="dct-use-row">' +
+      '<span class="note" id="coeffTourInfo"></span>' +
+      '<button data-coeff="prev">◀ 上一项</button>' +
+      '<button data-coeff="next">下一项 ▶</button>' +
+      '<button data-coeff="play" id="coeffPlay">播放</button>' +
+      '</div>' +
+      '<div class="dct-2d-top"><div class="dct-2d-col">' +
       figure('dctMain', 'DCT 系数矩阵 F(u,v)：点任意一格（或右侧基图）看这一项的贡献') +
       '</div><div class="dct-2d-col">' +
       figure('dctBasis', '64 张余弦基图像 B(u,v)：行 u = 纵向频率，列 v = 横向频率，点任意一张选中它') +
@@ -1976,36 +2135,117 @@
       figure('dctTermContribution', '② 基图 × 系数 F(u,v)：白=加亮，黑=压暗') +
       figure('dctTermRebuild', '③ 只留这一项能画出的块（+128）') +
       '</div>';
+    Array.prototype.forEach.call(stage.querySelectorAll('.dct-use-row button'), function (button) {
+      button.addEventListener('click', function () {
+        const kind = button.getAttribute('data-coeff');
+        if (kind === 'play') { toggleCoeffTour(); return; }
+        stopVisualAnimations();
+        stepCoeffSelection(kind === 'next' ? 1 : -1);
+      });
+    });
     /* 两列同宽同尺寸：删掉左侧的读数与统计卡后，矩阵和基图等高才不显得左轻右重 */
-    const target = setupCanvas('dctMain', 520, 520, pictureCap);
-    drawCoefficientMatrix(target);
-    target.canvas.addEventListener('click', function (event) {
-      const rectangle = target.canvas.getBoundingClientRect();
-      const x = (event.clientX - rectangle.left) / rectangle.width * target.w;
-      const y = (event.clientY - rectangle.top) / rectangle.height * target.h;
-      const column = clamp(Math.floor(x / (target.w / 8)), 0, 7);
-      const row = clamp(Math.floor(y / (target.h / 8)), 0, 7);
-      state.selectedCoeff = row * 8 + column;
-      renderDctBasisView();
-    });
-    const gallery = setupCanvas('dctBasis', 520, 520, pictureCap);
+    const target = setupCanvas('dctMain', 520, 520, dctPictureCap());
+    if (target) {
+      target.canvas.addEventListener('click', function (event) {
+        const rectangle = target.canvas.getBoundingClientRect();
+        const x = (event.clientX - rectangle.left) / rectangle.width * target.w;
+        const y = (event.clientY - rectangle.top) / rectangle.height * target.h;
+        const column = clamp(Math.floor(x / (target.w / 8)), 0, 7);
+        const row = clamp(Math.floor(y / (target.h / 8)), 0, 7);
+        /* 手动点选 = 巡览停在选中的这一项，只重画位图，不重建整页 */
+        stopVisualAnimations();
+        state.selectedCoeff = row * 8 + column;
+        refreshDctBasisView();
+      });
+    }
+    const gallery = setupCanvas('dctBasis', 520, 520, dctPictureCap());
+    if (gallery) {
+      gallery.canvas.addEventListener('click', function (event) {
+        const rectangle = gallery.canvas.getBoundingClientRect();
+        const x = (event.clientX - rectangle.left) / rectangle.width * gallery.w;
+        const y = (event.clientY - rectangle.top) / rectangle.height * gallery.h;
+        const cell = (gallery.w - BASIS_GAP * 9) / 8;
+        const column = clamp(Math.floor((x - BASIS_GAP) / (cell + BASIS_GAP)), 0, 7);
+        const row = clamp(Math.floor((y - BASIS_GAP) / (cell + BASIS_GAP)), 0, 7);
+        stopVisualAnimations();
+        state.selectedCoeff = row * 8 + column;
+        refreshDctBasisView();
+      });
+    }
+    refreshDctBasisView();
+  }
+
+  /* 只重画这一页的五张画布（矩阵 / 基图 / 三联图）：巡览一拍换一项，
+     整页重建 DOM 太贵，还会把控件上的监听一起丢掉再重绑。
+     三联图是补充说明，别让它抢到比主图还大：上限取主图上限的 2/3。 */
+  function refreshDctBasisView() {
+    const coefficients = encodedBlock().coefficients;
+    const cap = dctPictureCap();
+    const termCap = cap ? Math.round(cap * 0.66) : 0;
+    const matrix = setupCanvas('dctMain', 520, 520, cap);
+    const gallery = setupCanvas('dctBasis', 520, 520, cap);
+    if (!matrix || !gallery) return;
+    drawCoefficientMatrix(matrix);
     drawBasisGallery(gallery);
-    gallery.canvas.addEventListener('click', function (event) {
-      const rectangle = gallery.canvas.getBoundingClientRect();
-      const x = (event.clientX - rectangle.left) / rectangle.width * gallery.w;
-      const y = (event.clientY - rectangle.top) / rectangle.height * gallery.h;
-      const cell = (gallery.w - BASIS_GAP * 9) / 8;
-      const column = clamp(Math.floor((x - BASIS_GAP) / (cell + BASIS_GAP)), 0, 7);
-      const row = clamp(Math.floor((y - BASIS_GAP) / (cell + BASIS_GAP)), 0, 7);
-      state.selectedCoeff = row * 8 + column;
-      renderDctBasisView();
-    });
-    const selected = resolvedSelectedCoeff(block.coefficients);
-    /* 三联图是补充说明，别让它抢到比主图还大：上限取主图上限的 2/3，余下的高度留给上面两张主图 */
-    const termCap = pictureCap ? Math.round(pictureCap * 0.66) : 0;
     drawDctTermViews(setupCanvas('dctTermBasis', 260, 260, termCap),
       setupCanvas('dctTermContribution', 260, 260, termCap),
-      setupCanvas('dctTermRebuild', 260, 260, termCap), selected);
+      setupCanvas('dctTermRebuild', 260, 260, termCap), resolvedSelectedCoeff(coefficients));
+    syncCoeffTourControls();
+  }
+
+  /* 手动步进：64 项里前后挪一格，环形回绕 */
+  function stepCoeffSelection(delta) {
+    const current = resolvedSelectedCoeff(encodedBlock().coefficients);
+    state.selectedCoeff = (current + delta + 64) % 64;
+    refreshDctBasisView();
+  }
+
+  /* 读数条与播放按钮的唯一同步点：巡览每拍都会调一次 */
+  function syncCoeffTourControls() {
+    const coefficients = encodedBlock().coefficients;
+    const index = resolvedSelectedCoeff(coefficients);
+    const info = document.getElementById('coeffTourInfo');
+    if (info) {
+      info.textContent = '逐项巡览 第 ' + (index + 1) + ' / 64 项：F(' + Math.floor(index / 8) + ',' +
+        (index % 8) + ') = ' + formatValue(coefficients[index]) + '；蓝框 = 当前项';
+    }
+    const play = document.getElementById('coeffPlay');
+    if (play) play.textContent = (state.coeffTourTimer || state.coeffTourHold) ? '暂停' : '播放';
+  }
+
+  /* 一轮 = 64 项：按 (u,v) 行优先一格一拍，走完停 1.6 秒再从 (0,0) 重来。
+     矩阵高亮、基图蓝框、三联图跟着一起换，形成步进循环的巡览动图。 */
+  function startCoeffTour(startIndex) {
+    if (state.step !== 4 || state.dctView !== 'coeff') return;
+    stopVisualAnimations();
+    const total = 64;
+    let index = clamp(Math.round(typeof startIndex === 'number' ? startIndex : state.selectedCoeff), 0, total - 1);
+    state.selectedCoeff = index;
+    refreshDctBasisView();
+    state.coeffTourTimer = setInterval(function () {
+      index += 1;
+      if (index >= total) {
+        clearInterval(state.coeffTourTimer);
+        state.coeffTourTimer = null;
+        syncCoeffTourControls();
+        state.coeffTourHold = setTimeout(function () {
+          state.coeffTourHold = null;
+          if (state.step === 4 && state.dctView === 'coeff') startCoeffTour(0);
+        }, 1600);
+        return;
+      }
+      state.selectedCoeff = index;
+      if (state.step === 4 && state.dctView === 'coeff') refreshDctBasisView();
+    }, ANIM.interval('coefftour', total));
+  }
+
+  function toggleCoeffTour() {
+    if (state.coeffTourTimer || state.coeffTourHold) {
+      stopVisualAnimations();
+      syncCoeffTourControls();
+      return;
+    }
+    startCoeffTour(state.selectedCoeff);
   }
 
   /* ⑤ 重建：64 项按 |F| 降序叠加，看它怎样一步步逼回原块 */
@@ -3416,10 +3656,77 @@
   const QUANT_RULER_WIDTH = 640;
   const QUANT_RULER_HEIGHT = 88;
 
+  /* 当前分量的量化表基数：亮度用 K.1，色度用 K.2 */
+  function quantBaseTable() {
+    return state.component === 'Y' ? Codec.QL_BASE : Codec.QC_BASE;
+  }
+
+  /* 按给定 QF 现算这一块的 q 与 Fq：F 与 QF 无关，所以拖拉杆时只要重算
+     量化表与那一遍除法，不必把整幅图重新编码。 */
+  function quantAtQuality(coefficients, quality) {
+    const quant = Codec.qualityTable(quantBaseTable(), quality);
+    const quantized = new Int16Array(64);
+    let zeros = 0;
+    let total = 0;
+    let minimum = quant[0];
+    let maximum = quant[0];
+    for (let i = 0; i < 64; i++) {
+      quantized[i] = Codec.matlabRound(coefficients[i] / quant[i]);
+      if (quantized[i] === 0) zeros += 1;
+      total += quant[i];
+      if (quant[i] < minimum) minimum = quant[i];
+      if (quant[i] > maximum) maximum = quant[i];
+    }
+    return {
+      quant: quant,
+      quantized: quantized,
+      zeros: zeros,
+      mean: total / 64,
+      minimum: Math.round(minimum),
+      maximum: Math.round(maximum)
+    };
+  }
+
+  /* 四宫格、算式与参数卡统一读这个视图：始终按 state.Q 现算，
+     所以拖拉杆的瞬间四张矩阵就已经是新 QF 的结果。 */
+  function quantView() {
+    const block = encodedBlock();
+    const preview = quantAtQuality(block.coefficients, state.Q);
+    return {
+      coefficients: block.coefficients,
+      quant: preview.quant,
+      quantized: preview.quantized,
+      zeros: preview.zeros,
+      mean: preview.mean,
+      minimum: preview.minimum,
+      maximum: preview.maximum
+    };
+  }
+
+  /* scale 与 QF 的换挡关系，页面上要直接读出来 */
+  function qualityScale(quality) {
+    return quality < 50 ? Math.floor(5000 / quality) : 200 - 2 * quality;
+  }
+
+  /* 右侧 QF 面板：只有一条拉杆，配 scale / 平均步长 / 置零三个即时读数 */
+  function quantQfPanelMarkup() {
+    return '<aside class="quant-qf" aria-label="质量因子 QF 对量化的影响">' +
+      '<div class="qf-head"><h3>质量因子 QF</h3><span>QF =<b id="qfHeadValue">' + state.Q + '</b></span></div>' +
+      '<label class="qf-range"><input type="range" id="quantQfRange" min="1" max="100" step="1" value="' + state.Q +
+      '" aria-label="质量因子 QF，1 到 100"><span class="qf-ends"><em>1 最粗</em><em>100 最细</em></span></label>' +
+      '<div class="qf-meta">' +
+      '<div><span>scale</span><b id="qfScale">' + qualityScale(state.Q) + '</b></div>' +
+      '<div><span>平均步长</span><b id="qfMean">—</b></div>' +
+      '<div><span>置零</span><b id="qfZeros">—</b></div>' +
+      '</div>' +
+      '<p>拖动即重算左边四张图：q 变大 → 半个步长 q/2 变大 → 更多格落进置零区。</p>' +
+      '</aside>';
+  }
+
   /* 算式区 + 统计卡：量化页把它们放进左侧说明面板（首屏只留四宫格，下滚到面板才看见算例）。
      渲染时机由 renderLeft 掌握，这里只负责产出片段。 */
   function quantWorkMarkup() {
-    const block = encodedBlock();
+    const view = quantView();
     return '<div class="quant-work">' +
       '<div class="quant-work-head"><span id="quantWorkPos">算术过程：点击任意格子可固定查看这一格</span>' +
       '<span>round 取最近整数：|F ÷ q| &lt; 0.5 → 0，该格整格丢弃</span></div>' +
@@ -3439,21 +3746,24 @@
       '<canvas id="quantRuler" role="img" aria-label="量化步长标尺：当前质量因子 QF 对应的位置"></canvas>' +
       '</div>' +
       '<div class="quant-foot">' + statBlock([
-        ['质量因子 QF', state.Q],
-        ['q(u,v) 范围', Math.min.apply(null, Array.from(block.quant)) + '–' + Math.max.apply(null, Array.from(block.quant))],
-        ['置零系数', countZero(block.quantized) + ' / 64'],
-        ['零系数占比', (100 * countZero(block.quantized) / 64).toFixed(1) + '%']
+        ['质量因子 QF', state.Q, 'qfFootQuality'],
+        ['q(u,v) 范围', view.minimum + '–' + view.maximum, 'qfFootRange'],
+        ['置零系数', view.zeros + ' / 64', 'qfFootZeros'],
+        ['零系数占比', (100 * view.zeros / 64).toFixed(1) + '%', 'qfFootRatio']
       ]) + '</div>';
   }
 
-  /* 量化页：F → q → F/q → Fq 四个 8×8 矩阵在演示台排成 2×2，
-   * 点选任意格 = 把那一格的 F、q、商、取整结果、反量化回看与误差一起摊在左侧面板里。 */
+  /* 量化页：左边 F → q → F/q → Fq 四宫格，右边一整列专门讲 QF 怎么改量化；
+   * 点选任意格 = 把那一格的 F、q、商、取整结果、反量化回看与误差一起摊在下方面板里。 */
   function renderQuantStep() {
-    stage.innerHTML = '<div class="quant-grid">' +
+    stage.innerHTML = '<div class="quant-layout">' +
+      '<div class="quant-grid">' +
       figure('quantSource', '① DCT 原始系数 F(u,v)（蓝负红正）') +
       figure('quantTable', '② 量化步长 q(u,v)：颜色越暖步长越大') +
       figure('quantQuotient', '③ F ÷ q（取整前；浅橙底 = 不足半个步长，必被置零）') +
       figure('quantCoeff', '④ 四舍五入后的 Fq(u,v)（红叉 = 0）') +
+      '</div>' +
+      quantQfPanelMarkup() +
       '</div>';
     ['quantSource', 'quantTable', 'quantQuotient', 'quantCoeff'].forEach(function (id) {
       setupCanvas(id, QUANT_MATRIX_SIZE, QUANT_MATRIX_SIZE);
@@ -3471,7 +3781,94 @@
         paintQuantStep();
       });
     });
+    bindQuantQfControls();
+    syncQfSweepButton();
     paintQuantStep();
+    paintQuantQf();
+  }
+
+  /* QF 面板的交互：拖动时只现算这一块，松手（change）才整幅重编码 */
+  function bindQuantQfControls() {
+    const range = document.getElementById('quantQfRange');
+    if (!range) return;
+    range.addEventListener('input', function () {
+      applyQuantQuality(Number(range.value), false);
+    });
+    range.addEventListener('change', function () {
+      applyQuantQuality(Number(range.value), true);
+    });
+  }
+
+  /* commit = true：整幅图跟着重编码并重绘（松手时用）。
+     commit = false：只重画量化页这几块画布，拖动时不卡手。 */
+  function applyQuantQuality(quality, commit) {
+    state.Q = clamp(Math.round(Number(quality) || 50), 1, 100);
+    const range = document.getElementById('quantQfRange');
+    if (range && Number(range.value) !== state.Q) range.value = String(state.Q);
+    if (commit) {
+      rebuild();
+      return;
+    }
+    paintQuantStep();
+    paintQuantQf();
+    refreshStepParams();
+  }
+
+  /* 扫掠：QF 从 100 匀速走到 5 看「格怎么被清光」，结束后回到开播前的 QF——
+     不然整份演示会停在 QF=5，后面每节的 PSNR 与文件体积都被这次演示带走。 */
+  function startQfSweep() {
+    if (state.step !== 5) return;
+    if (state.qfTimer) {
+      stopQfSweep(true);
+      return;
+    }
+    /* 减少动态效果偏好下不做动画：直接落到最粗一档，再点一次回到原来的 QF */
+    if (ANIM.reduced) {
+      if (typeof state.qfReturn === 'number') {
+        const back = state.qfReturn;
+        state.qfReturn = null;
+        applyQuantQuality(back, true);
+      } else {
+        state.qfReturn = state.Q;
+        applyQuantQuality(5, true);
+      }
+      return;
+    }
+    const total = 40;
+    let tick = 0;
+    state.qfReturn = state.Q;
+    applyQuantQuality(100, false);
+    state.qfTimer = setInterval(function () {
+      tick += 1;
+      const progress = ANIM.progress('qfsweep', tick, total);
+      applyQuantQuality(Math.round(100 + (5 - 100) * progress), false);
+      if (tick >= total) stopQfSweep(true);
+    }, ANIM.interval('qfsweep', total));
+    syncQfSweepButton();
+  }
+
+  /* restore = true：停下来的同时把 QF 复位到开播前的值，并重编码一次 */
+  function stopQfSweep(restore) {
+    const running = !!state.qfTimer;
+    if (state.qfTimer) {
+      clearInterval(state.qfTimer);
+      state.qfTimer = null;
+    }
+    syncQfSweepButton();
+    if (!restore || !running) return;
+    const target = typeof state.qfReturn === 'number' ? state.qfReturn : 50;
+    state.qfReturn = null;
+    applyQuantQuality(target, true);
+  }
+
+  /* 扫掠按钮在左侧工具区：扫掠进行时把它改写成「停止」 */
+  function syncQfSweepButton() {
+    const tools = document.getElementById('stepTools');
+    if (!tools) return;
+    Array.prototype.forEach.call(tools.querySelectorAll('button'), function (item) {
+      if (item.getAttribute('data-action') !== 'qfsweep') return;
+      item.textContent = state.qfTimer ? '停止 QF 扫掠' : 'QF 扫掠 100 → 5';
+    });
   }
 
   function quantTarget(id) {
@@ -3500,14 +3897,35 @@
   function paintQuantStep() {
     const source = quantTarget('quantSource');
     if (!source) return;
-    const block = encodedBlock();
-    const focus = quantFocusIndex(block);
-    drawQuantSource(source, block, focus);
-    drawQuantTable(quantTarget('quantTable'), block, focus);
-    drawQuantQuotient(quantTarget('quantQuotient'), block, focus);
-    drawQuantizedCells(quantTarget('quantCoeff'), block, focus);
-    drawQuantRuler(quantTarget('quantRuler'), block, focus);
-    updateQuantWork(block, focus);
+    const view = quantView();
+    const focus = quantFocusIndex(view);
+    drawQuantSource(source, view, focus);
+    drawQuantTable(quantTarget('quantTable'), view, focus);
+    drawQuantQuotient(quantTarget('quantQuotient'), view, focus);
+    drawQuantizedCells(quantTarget('quantCoeff'), view, focus);
+    drawQuantRuler(quantTarget('quantRuler'), view, focus);
+    updateQuantWork(view, focus);
+  }
+
+  /* QF 面板随 state.Q 刷新：QF 值、scale、平均步长、置零数，以及下方面板的统计卡 */
+  function paintQuantQf() {
+    const view = quantView();
+    const setText = function (id, text) {
+      const node = document.getElementById(id);
+      if (node) node.textContent = text;
+    };
+    setText('qfHeadValue', String(state.Q));
+    setText('qfScale', String(qualityScale(state.Q)));
+    setText('qfMean', view.mean.toFixed(1));
+    setText('qfZeros', view.zeros + ' / 64');
+    /* 统计卡（在下方面板里）跟着同一个 QF 走 */
+    setText('qfFootQuality', String(state.Q));
+    setText('qfFootRange', view.minimum + '–' + view.maximum);
+    setText('qfFootZeros', view.zeros + ' / 64');
+    setText('qfFootRatio', (100 * view.zeros / 64).toFixed(1) + '%');
+
+    const range = document.getElementById('quantQfRange');
+    if (range && Number(range.value) !== state.Q) range.value = String(state.Q);
   }
 
   function markQuantFocus(target, index) {
@@ -3866,9 +4284,10 @@
     }
   }
 
-  /* 双轨图逻辑画布：宽 1000 让 64 格与 17 个符号都放得下字，高 180 压掉上下多余留白 */
-  const RLE_STRIP_WIDTH = 1000;
-  const RLE_STRIP_HEIGHT = 180;
+  /* 双轨图逻辑画布：宽 1240 让 64 格每格接近 20 个单位宽（两位数能写到 12px），
+     高 300 给上轨系数带与下轨符号格各自留出可读的两行高度 */
+  const RLE_STRIP_WIDTH = 1240;
+  const RLE_STRIP_HEIGHT = 300;
 
   function renderRleStep() {
     const block = encodedBlock();
@@ -3876,7 +4295,7 @@
     state.rleStep = 0;
     stage.innerHTML = '<figure>' +
       canvasTag('rleStrip', '上排是 64 个 Zigzag 系数，下排每个格子是一个符号：AC 写作 (run, size)，run 是前面跳过的零个数，size 是幅值位数；第二行是该符号的数值。橙色连线表示当前符号负责哪几个系数') +
-      '<figcaption>上排：64 个 Zigzag 系数（左 = 低频，右 = 高频，浅灰 = 0）　下排：一格 = 一个符号，上行为符号——AC 写作 <b>(run, size)</b>，run = 前面跳过几个 0、size = 幅值占几位；下行为它的数值，橙色连线 = 当前符号管着哪几个系数</figcaption></figure>' +
+      '<figcaption>上排 = 64 个 Zigzag 系数（#1 低频 → #64 高频，浅灰 = 0）；下排 = 符号序列，格内两行是「符号 / 它代表的数值」，橙线 = 当前符号管着哪几个系数</figcaption></figure>' +
       '<div class="rle-anatomy" id="rleAnatomy">' + rleAnatomyHTML(block) + '</div>' +
       '<p class="note" id="rleReadout"></p>';
     drawRleStrip(setupCanvas('rleStrip', RLE_STRIP_WIDTH, RLE_STRIP_HEIGHT), block, -1);
@@ -3969,10 +4388,13 @@
     const context = target.ctx;
     const width = target.w;
     const cellWidth = width / 64;
-    const laneTop = 24;
-    const laneHeight = Math.max(40, Math.round(target.h * 0.28));
-    const symTop = laneTop + laneHeight + 22;
-    const symHeight = Math.max(44, target.h - symTop - 8);
+    /* 标题行 32 + 上轨 100 + 连线区 42 + 下轨（余下高度）：300 的高度里
+       两条轨道各占三分之一上下，中间留出橙线折弯的走廊 */
+    const titleBaseline = 20;
+    const laneTop = 34;
+    const laneHeight = Math.max(72, Math.round(target.h * 0.33));
+    const symTop = laneTop + laneHeight + 42;
+    const symHeight = Math.max(64, target.h - symTop - 10);
     const symbols = block.symbols;
     const spans = rleSpans(block);
     const symWidth = width / Math.max(1, symbols.length);
@@ -3980,13 +4402,13 @@
     for (let i = 0; i < 64; i++) maximum = Math.max(maximum, Math.abs(block.scan[i]));
     context.clearRect(0, 0, width, target.h);
 
-    context.fillStyle = '#64748b';
-    context.font = '600 11px "Segoe UI", "Microsoft YaHei", system-ui, sans-serif';
+    context.fillStyle = '#52627a';
+    context.font = '600 13px "Segoe UI", "Microsoft YaHei", system-ui, sans-serif';
     context.textAlign = 'left';
     context.textBaseline = 'alphabetic';
-    context.fillText('上排 · 64 个 Zigzag 系数（#1 = 低频 … #64 = 高频，浅灰 = 0）', 0, 15);
+    context.fillText('上排 · 64 个 Zigzag 系数（#1 = 低频 … #64 = 高频，浅灰 = 0）', 0, titleBaseline);
     context.textAlign = 'right';
-    context.fillText('下排 · AC = (run, size)：run = 跳过几个 0，size = 幅值位数', width, 15);
+    context.fillText('下排 · AC = (run, size)：run = 跳过几个 0，size = 幅值位数', width, titleBaseline);
 
     for (let i = 0; i < 64; i++) {
       const value = block.scan[i];
@@ -3994,10 +4416,14 @@
       context.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
       context.fillRect(i * cellWidth, laneTop, cellWidth + 0.4, laneHeight);
       /* 数值直接写在格子里，零也写出来：一眼能看出"后半截全是 0"；
-         格子只有十几像素宽，字号按位数收缩，三位数也不至于溢出 */
+         字号从 12 起逐档缩小，直到实测宽度塞进格子，三位数也不会压到邻居格 */
       const numberText = String(value);
-      const numberSize = Math.max(6, Math.min(9, (cellWidth - 2) / Math.max(2, numberText.length) * 1.65));
-      context.font = '700 ' + numberSize.toFixed(1) + 'px Consolas, monospace';
+      let numberSize = 12;
+      context.font = '700 ' + numberSize + 'px Consolas, monospace';
+      while (numberSize > 8 && context.measureText(numberText).width > cellWidth - 3) {
+        numberSize -= 0.5;
+        context.font = '700 ' + numberSize + 'px Consolas, monospace';
+      }
       context.textAlign = 'center';
       context.textBaseline = 'middle';
       context.fillStyle = value === 0 ? '#94a3b8' : textColor(rgb);
@@ -4005,9 +4431,18 @@
       /* 零系数在底部补一条浅灰：连续零读起来就是一排空槽，而不是一片白 */
       if (value === 0) {
         context.fillStyle = 'rgba(148,163,184,0.3)';
-        context.fillRect(i * cellWidth, laneTop + laneHeight - 3, cellWidth + 0.4, 3);
+        context.fillRect(i * cellWidth, laneTop + laneHeight - 4, cellWidth + 0.4, 4);
       }
     }
+    /* 格内文字按实测宽度收字号：(15,11) 这类长符号也不会顶出格边 */
+    const fitTextSize = function (text, maximum, floor) {
+      let size = maximum;
+      context.font = '700 ' + size.toFixed(1) + 'px Consolas, monospace';
+      while (size > floor && context.measureText(text).width > symWidth - 10) {
+        size -= 0.5;
+        context.font = '700 ' + size.toFixed(1) + 'px Consolas, monospace';
+      }
+    };
     symbols.forEach(function (symbol, index) {
       const x = index * symWidth;
       const active = index === activeIndex;
@@ -4019,20 +4454,20 @@
       context.lineWidth = active ? 2 : 1;
       context.strokeRect(x + 1.5, symTop + 0.5, Math.max(2, symWidth - 3), symHeight - 1);
       const centerY = symTop + symHeight / 2;
-      const labelSize = Math.max(8, Math.min(11, symWidth / 5.4));
-      const valueSize = Math.max(7, Math.min(10, symWidth / 6.2));
+      const labelText = symbolLabel(symbol);
+      const valueText = symbolValueText(symbol, spans[index]);
       context.textAlign = 'center';
       context.textBaseline = 'middle';
       if (symWidth > 24) {
         context.fillStyle = active ? '#c2410c' : color;
-        context.font = '700 ' + labelSize.toFixed(1) + 'px Consolas, monospace';
-        context.fillText(symbolLabel(symbol), x + symWidth / 2, centerY - 8);
+        fitTextSize(labelText, Math.min(14, symWidth / 4.8), 8);
+        context.fillText(labelText, x + symWidth / 2, centerY - 11);
       }
       /* 第二行直接写这个符号代表的数值，两行在格内上下居中 */
       if (symWidth > 18) {
         context.fillStyle = active ? '#c2410c' : '#334155';
-        context.font = '700 ' + valueSize.toFixed(1) + 'px Consolas, monospace';
-        context.fillText(symbolValueText(symbol, spans[index]), x + symWidth / 2, centerY + 8);
+        fitTextSize(valueText, Math.min(13, symWidth / 5.4), 8);
+        context.fillText(valueText, x + symWidth / 2, centerY + 11);
       }
     });
 
@@ -4091,6 +4526,7 @@
     }).join('');
     stage.innerHTML = huffmanTableHTML() +
       '<div class="bits bitstream" id="huffBits">' + bitGroupsHTML(block) + '</div>' +
+      huffStreamHTML(block) +
       '<div class="huff-codes">' +
       '<span class="huff-stat">' + unique.length + ' 个唯一码字 · ' +
       block.symbols.length + ' 个符号 · ' + block.bits.length + ' bit · 平均 ' +
@@ -4099,19 +4535,134 @@
       '<p class="note" id="huffReadout"></p>';
   }
 
+  /* 编码后的数据样式：把本块的十几个小段首尾相接，得到真正写进码流的 0/1 串。
+     蓝 = 查表得到的 Huffman 码字，黄 = 紧跟其后的幅值位；
+     虚线按整幅码流的真实字节边界插入（起点偏移取该块的 bitStart），
+     所以读者看到的就是这一块落在 .jpg 熵编码段里的样子。 */
+  function huffStreamHTML(block) {
+    const bits = block.bits;
+    const kinds = new Array(bits.length);
+    let position = 0;
+    block.symbols.forEach(function (symbol) {
+      let i;
+      for (i = 0; i < symbol.code.length; i++) kinds[position + i] = 'c';
+      position += symbol.code.length;
+      for (i = 0; i < symbol.amplitude.length; i++) kinds[position + i] = 'a';
+      position += symbol.amplitude.length;
+    });
+    const offset = (block.bitStart || 0) % 8;
+    let html = '';
+    let index = 0;
+    while (index < bits.length) {
+      if (index > 0 && (index + offset) % 8 === 0) html += '<i class="bytegap"></i>';
+      const kind = kinds[index] || 'c';
+      /* 同类比特连成一段，但到字节边界就断开，好让虚线正好落在 8 位分组处 */
+      let stop = index + 1;
+      while (stop < bits.length && (kinds[stop] || 'c') === kind && (stop + offset) % 8 !== 0) stop += 1;
+      /* 首段不满 8 位 = 本块从该字节中途开始，前面几位属于上一块 */
+      const head = index === 0 && offset > 0 ? ' partial' : '';
+      html += '<span class="' + kind + head + '">' + bits.slice(index, stop) + '</span>';
+      index = stop;
+    }
+    const stats = state.encoded.stats;
+    return '<div class="huff-stream">' +
+      '<div class="huff-stream-head">编码后的数据：' + block.symbols.length +
+      ' 个符号首尾相接 → <b>' + bits.length + ' bit</b>，原样写进码流</div>' +
+      '<div class="huff-bitline">' + html + '</div>' +
+      '<p class="huff-legend">' +
+      '<span class="lg-c"><i></i>Huffman 码字</span>' +
+      '<span class="lg-a"><i></i>幅值位（系数本身的数值）</span>' +
+      '<span class="lg-g"><i></i>字节边界（每 8 位）</span>' +
+      (offset > 0 ? '<span class="lg-note">灰底那段只有 ' + (8 - offset) +
+        ' 位：该字节前 ' + offset + ' 位已被上一块用掉</span>' : '') +
+      '</p>' +
+      '<p class="note">块与块之间不补位：这 ' + bits.length + ' 位后面直接接下一块的码字。' +
+      '整幅 ' + stats.totalBits + ' bit 全部写完后，末尾补 ' + stats.paddingBits +
+      ' 个 1 凑满最后一字节，共 ' + stats.entropyBytes + ' 字节熵编码数据（不含表与标记）。</p>' +
+      '</div>';
+  }
+
   /* 07.3 Huffman 表页：先看 BITS 分布（每个码长几个码字），再看 DC/AC 码字清单 */
 
-  /* 原 07.3 的标准原文表，放在 Huffman 页最上方：K.3 全表 + K.5 上下两半，固定三列 */
+  /* 原 07.3 的标准原文表，放在 Huffman 页最上方：K.3 全表 + K.5 上下两半，固定三列。
+     三列并排时每张只有列宽那么大，扫描件里的小字会糊成一团，
+     因此每张都可以点开按原尺寸看（Esc 或点空白处关闭）。 */
+  /* 表图只留图片本身，图注与“原版整页”链接都不再显示；
+     表格名称仍写进 alt 与放大层的标签，读屏与放大视图仍能知道这是哪张表 */
+  function tableFigureHTML(id, source, alt, label) {
+    return '<figure class="t81-fig" id="' + id + '" data-zoom="' + source + '" data-zoom-label="' + label + '"' +
+      ' tabindex="0" role="button" aria-label="放大查看 ' + label + '">' +
+      '<img src="' + source + '" alt="' + alt + '"></figure>';
+  }
+
   function huffmanTableHTML() {
     return '<div class="t81-tables">' +
-      '<figure id="t81DcTable"><img src="assets/t81_table_k3_dc.png" alt="ITU-T T.81 Table K.3 亮度 DC Huffman 表">' +
-      '<figcaption>Table K.3（Category 0–11）：Category 就是 DC 差值的 size。本块 DC(3) 对应 3，码字 <code>100</code>。</figcaption></figure>' +
-      '<figure id="t81AcTable"><img src="assets/t81_k5_top.png" alt="ITU-T T.81 Table K.5 亮度 AC Huffman 表上半 0/0–1/7">' +
-      '<figcaption>Table K.5 上半：0/0（EOB）… 1/7。Run/Size 就是游程编码得到的符号。' +
-      '原版整页 <a href="assets/t81_table_k5_ac.png" target="_blank" rel="noopener">点这里看</a>。</figcaption></figure>' +
-      '<figure id="t81AcTable2"><img src="assets/t81_k5_bottom.png" alt="ITU-T T.81 Table K.5 亮度 AC Huffman 表下半 1/8–3/A">' +
-      '<figcaption>Table K.5 下半：1/8 … 3/A，接上图继续。</figcaption></figure>' +
+      tableFigureHTML('t81DcTable', 'assets/t81_table_k3_dc.png',
+        'ITU-T T.81 Table K.3 亮度 DC Huffman 表', 'Table K.3') +
+      tableFigureHTML('t81AcTable', 'assets/t81_k5_top.png',
+        'ITU-T T.81 Table K.5 亮度 AC Huffman 表上半 0/0–1/7', 'Table K.5 上半') +
+      tableFigureHTML('t81AcTable2', 'assets/t81_k5_bottom.png',
+        'ITU-T T.81 Table K.5 亮度 AC Huffman 表下半 1/8–3/A', 'Table K.5 下半') +
       '</div>';
+  }
+
+  /* 标准表原图放大层：只用到页面里的一层覆盖，不改变列表本身的尺寸，
+     所以“一屏装下”不会被破坏，需要看小字时再点开。 */
+  let zoomLayer = null;
+
+  function closeTableZoom() {
+    if (!zoomLayer) return;
+    zoomLayer.classList.remove('on');
+    document.body.classList.remove('zoom-open');
+    document.removeEventListener('keydown', zoomKeydown);
+  }
+
+  function zoomKeydown(event) {
+    if (event.key === 'Escape') {
+      closeTableZoom();
+      event.preventDefault();
+    }
+  }
+
+  function openTableZoom(source, label) {
+    if (!zoomLayer) {
+      zoomLayer = document.createElement('div');
+      zoomLayer.className = 'zoom-layer';
+      zoomLayer.setAttribute('role', 'dialog');
+      zoomLayer.setAttribute('aria-modal', 'true');
+      zoomLayer.innerHTML = '<figure><img alt=""><figcaption></figcaption></figure>' +
+        '<p class="zoom-hint">点击任意处或按 Esc 关闭</p>';
+      zoomLayer.addEventListener('click', closeTableZoom);
+      document.body.appendChild(zoomLayer);
+    }
+    const image = zoomLayer.querySelector('img');
+    image.src = source;
+    image.alt = label || '标准表原图';
+    zoomLayer.querySelector('figcaption').textContent = label || '';
+    zoomLayer.classList.add('on');
+    document.body.classList.add('zoom-open');
+    document.addEventListener('keydown', zoomKeydown);
+  }
+
+  /* 图与文字每次切步都会重建，放大层用 document 级委托，绑一次就够 */
+  function bindTableZoomEvents() {
+    if (typeof document.addEventListener !== 'function') return;
+    document.addEventListener('click', function (event) {
+      if (!event.target.closest) return;
+      /* 图注里还留着“原版整页”的外链，点链接就让它照常新开标签 */
+      if (event.target.closest('a')) return;
+      const target = event.target.closest('[data-zoom]');
+      if (!target) return;
+      event.preventDefault();
+      openTableZoom(target.getAttribute('data-zoom'), target.getAttribute('data-zoom-label'));
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const target = event.target.closest && event.target.closest('[data-zoom]');
+      if (!target) return;
+      event.preventDefault();
+      openTableZoom(target.getAttribute('data-zoom'), target.getAttribute('data-zoom-label'));
+    });
   }
 
 
@@ -4241,35 +4792,76 @@
     context.fillText(maximum + ' bit', target.w - 10, base + 16);
   }
 
+  /* 熵解码页：指标卡沿用其它页的 statBlock；逐符号对照表放主区；
+     位流片段做成和 07.3「编码后的数据」同一套浅底卡片，不再是一条裸位流。
+     读的顺序就是解码顺序：先看位流从哪来 → 再逐符号查表 → 最后看游标走到哪。 */
   function renderDecEntropyStep() {
     const block = encodedBlock();
     const decoded = decodedBlock();
     const same = sameSymbols(block.symbols, decoded.symbols);
     const rows = block.symbols.map(function (symbol, index) {
       const other = decoded.symbols[index] || {};
-      return '<tr><td>' + symbolLabel(symbol) + '</td><td>' + symbol.code + '</td><td>' +
-        (other.kind ? symbolLabel(other) : '—') + '</td><td>' + (other.code || '—') + '</td><td>' +
-        (other.value !== undefined ? other.value : '—') + '</td></tr>';
+      const matched = other.kind === symbol.kind && other.code === symbol.code &&
+        other.value === symbol.value;
+      return '<tr><td class="idx">' + (index + 1) + '</td>' +
+        '<td class="pair">' + symbolLabel(symbol) + ' <code>' + symbol.code + '</code></td>' +
+        '<td class="amp">' + (symbol.amplitude ? '<code>' + symbol.amplitude + '</code>' : '<span class="dim">—</span>') + '</td>' +
+        '<td class="pair">' + (other.kind ? symbolLabel(other) : '—') +
+        ' <code>' + (other.code || '—') + '</code></td>' +
+        '<td class="val' + (matched ? '' : ' warn') + '">' +
+        (other.value !== undefined ? String(other.value) : '—') + '</td></tr>';
+    }).join('');
+    /* 位流分段图：每个符号按位长占一段宽度，17 段拼起来就是本块整条位流，
+       比表格里的数字更直观——哪几个符号吃掉了大半比特一眼可见 */
+    const segments = block.symbols.map(function (symbol, index) {
+      const length = symbol.code.length + symbol.amplitude.length;
+      const kind = symbol.kind === 'DC' ? 'dc' : symbol.kind === 'EOB' ? 'eob' :
+        symbol.kind === 'ZRL' ? 'zrl' : 'ac';
+      const hint = '#' + (index + 1) + ' ' + symbolLabel(symbol) + '，' + length + ' bit';
+      return '<span class="seg ' + kind + '" style="flex:' + length + ' 1 0" title="' +
+        escapeHTML(hint) + '">' + (index + 1) + '</span>';
     }).join('');
     const start = Math.max(0, block.bitStart - 8);
     const end = Math.min(state.encoded.bitstream.length, block.bitEnd + 8);
     const snippet = state.encoded.bitstream.slice(start, end);
     const usedStart = block.bitStart - start;
     const usedEnd = block.bitEnd - start;
-    stage.innerHTML = '<div class="rle-dc">' +
-      '<div class="card"><span>位范围</span><b>' + block.bitStart + '–' + block.bitEnd + '</b></div>' +
-      '<div class="card"><span>编码符号</span><b>' + block.symbols.length + '</b></div>' +
-      '<div class="card"><span>解码符号</span><b>' + decoded.symbols.length + '</b></div>' +
-      '<div class="card"><span>一致性</span><b class="' + (same ? 'ok' : 'warn') + '">' + (same ? '一致' : '不一致') + '</b></div>' +
+    stage.innerHTML = '<div class="decode-stats">' + statBlock([
+      ['位范围', block.bitStart + '–' + block.bitEnd],
+      ['本块位数', (block.bitEnd - block.bitStart) + ' bit'],
+      ['符号数（编码 → 解码）', block.symbols.length + ' → ' + decoded.symbols.length],
+      ['一致性', '<span class="' + (same ? 'ok' : 'warn') + '">' + (same ? '逐位一致' : '不一致') + '</span>']
+    ]) + '</div>' +
+      '<div id="decodeWrap"><div class="scroll decode-scroll">' +
+      '<table class="data decode-table"><thead><tr>' +
+      '<th>#</th><th>编码（符号 码字）</th><th>幅值位</th><th>解码（符号 码字）</th>' +
+      '<th>还原值</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
+      '<div class="decode-timeline">' +
+      '<div class="decode-timeline-head"><b>本块位流的分段</b>' +
+      '<span>每段宽度 = 该符号占的位数，合计 ' + (block.bitEnd - block.bitStart) + ' bit</span></div>' +
+      '<div class="decode-timeline-track">' + segments + '</div>' +
+      '<p class="decode-legend">' +
+      '<span><i class="lg-dc"></i>DC</span>' +
+      '<span><i class="lg-ac"></i>AC</span>' +
+      '<span><i class="lg-eob"></i>EOB / ZRL</span>' +
+      '<span class="lg-tip">悬停任意一段看它是第几个符号、占几位</span></p>' +
       '</div>' +
-      '<div id="decodeWrap"><div class="scroll"><table class="data"><thead><tr><th>编码符号</th><th>编码码字</th><th>解码符号</th><th>解码码字</th><th>值</th></tr></thead><tbody>' +
-      rows + '</tbody></table></div></div>' +
-      '<p class="note" id="decodeReadout"></p>' +
-      '<p class="subcap" style="margin-top:10px">位流片段（浅色为本块消耗的位）</p>' +
+      '<div class="decode-stream">' +
+      '<div class="decode-stream-head"><b>位流片段</b>' +
+      '<span>本块占第 ' + block.bitStart + '–' + block.bitEnd + ' 位，前后各取 8 位当上下文</span></div>' +
       '<div class="bits" id="decodeBitStrip">' + snippet.split('').map(function (bit, index) {
         const used = index >= usedStart && index < usedEnd;
         return '<span class="' + (bit === '1' ? 'one' : 'zero') + (used ? ' used' : '') + '">' + bit + '</span>';
-      }).join('') + '</div>';
+      }).join('') + '</div>' +
+      '<p class="decode-legend">' +
+      '<span><i class="lg-used"></i>本块已解码</span>' +
+      '<span><i class="lg-cursor">▮</i>读游标</span>' +
+      '<span><i class="lg-rest"></i>上下文（不属于本块）</span></p>' +
+      '</div>' +
+      '<p class="note" id="decodeReadout"></p>';
+    /* 静态进页也把读数填上（动画里会继续更新），否则这里一直空着 */
+    updateDecodeReadout(block.symbols);
   }
 
   function renderDequantStep() {
@@ -4472,6 +5064,608 @@
       '<p class="matlab-ref-foot">数据来源：src/run_color_experiment.m（' + reference.generatedBy + '，' +
       reference.generatedAt + '）；网页复算与 MATLAB 逐位相同，差值应为 0。</p>' +
       '</details>';
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* MATLAB 批量实测（10 章）：数据读取与图表                            */
+  /* ------------------------------------------------------------------ */
+
+  /* 三种方法的线型与颜色沿用 MATLAB 图的习惯（蓝实线圆点 / 橙虚线方点 / 青点线三角），
+     方便把网页和 results/figures/02_rate_distortion.png 对照着看 */
+  const MATLAB_METHOD_STYLE = [
+    { key: 'custom_jpeg', label: '自编：频率加权', color: '#1d4ed8', dash: [], marker: 'circle' },
+    { key: 'custom_uniform', label: '自编：等步长', color: '#c2410c', dash: [6, 4], marker: 'square' },
+    { key: 'matlab_jpeg', label: 'MATLAB imwrite', color: '#0f766e', dash: [2, 3], marker: 'triangle' }
+  ];
+  const MATLAB_IMAGE_COLORS = ['#1d4ed8', '#c2410c', '#15803d', '#9333ea'];
+
+  function matlabData() {
+    const data = window.MATLAB_RESULTS;
+    if (!data || !Array.isArray(data.rows) || !data.rows.length) return null;
+    return data;
+  }
+
+  function matlabImageLabel(data, index, short) {
+    const item = data && data.images ? data.images[index] : null;
+    if (!item) return '图 ' + (index + 1);
+    return short ? item.short : item.label;
+  }
+
+  /* 取一条实测序列，按横轴（bpp 或 Q）升序；缺值的点（imwrite 那一路没有熵位等）直接跳过 */
+  function matlabSeries(data, imageIndex, methodIndex, field, axis) {
+    return data.rows
+      .filter(function (row) {
+        return row.image === imageIndex && row.method === methodIndex && row[field] !== null && row[field] !== undefined;
+      })
+      .sort(function (a, b) { return a[axis] - b[axis]; })
+      .map(function (row) { return [row[axis], row[field]]; });
+  }
+
+  function matlabLegendHTML(items) {
+    return '<div class="matlab-legend">' + items.map(function (item) {
+      return '<span><i style="background:' + item.color + '"></i>' + escapeHTML(item.label) + '</span>';
+    }).join('') + '</div>';
+  }
+
+  /* 刻度取整：让网格线落在 1/2/2.5/5 这类好读的数上 */
+  function niceTicks(minimum, maximum, count) {
+    const span = maximum - minimum;
+    if (!(span > 0)) return [minimum];
+    const raw = span / Math.max(1, count);
+    const power = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+    const normalized = raw / power;
+    const step = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 5 ? 5 : 10) * power;
+    const ticks = [];
+    for (let value = Math.ceil(minimum / step - 1e-9) * step; value <= maximum + step * 1e-6; value += step) {
+      ticks.push(Math.round(value * 1e6) / 1e6);
+    }
+    return ticks;
+  }
+
+  /* 画一块带网格、刻度与轴标签的绘图区，返回把数据值映射到画布坐标的两个函数 */
+  function drawChartFrame(ctx, box, config) {
+    const pad = { left: 42, right: 12, top: config.title ? 18 : 6, bottom: 34 };
+    const plot = {
+      x: box.x + pad.left,
+      y: box.y + pad.top,
+      w: Math.max(20, box.w - pad.left - pad.right),
+      h: Math.max(20, box.h - pad.top - pad.bottom)
+    };
+    const toX = function (value) { return plot.x + (value - config.xMin) / (config.xMax - config.xMin) * plot.w; };
+    const toY = function (value) { return plot.y + plot.h - (value - config.yMin) / (config.yMax - config.yMin) * plot.h; };
+
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#e6edf6';
+    ctx.fillStyle = '#7c8ba1';
+    ctx.font = '10px Consolas, "Cascadia Mono", monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    (config.yTicks || []).forEach(function (value) {
+      const y = toY(value);
+      ctx.beginPath(); ctx.moveTo(plot.x, y); ctx.lineTo(plot.x + plot.w, y); ctx.stroke();
+      ctx.fillText(config.yFormat ? config.yFormat(value) : String(value), plot.x - 6, y);
+    });
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    (config.xTicks || []).forEach(function (value) {
+      const x = toX(value);
+      ctx.beginPath(); ctx.moveTo(x, plot.y); ctx.lineTo(x, plot.y + plot.h); ctx.stroke();
+      ctx.fillText(config.xFormat ? config.xFormat(value) : String(value), x, plot.y + plot.h + 6);
+    });
+
+    ctx.strokeStyle = '#b9c6d8';
+    ctx.beginPath();
+    ctx.moveTo(plot.x, plot.y);
+    ctx.lineTo(plot.x, plot.y + plot.h);
+    ctx.lineTo(plot.x + plot.w, plot.y + plot.h);
+    ctx.stroke();
+
+    ctx.fillStyle = '#52627a';
+    ctx.font = '10.5px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(config.xLabel, plot.x + plot.w / 2, plot.y + plot.h + 19);
+    ctx.save();
+    ctx.translate(plot.x - 28, plot.y + plot.h / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(config.yLabel, 0, 0);
+    ctx.restore();
+
+    if (config.title) {
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = '600 11px "Microsoft YaHei", sans-serif';
+      ctx.fillStyle = '#334155';
+      ctx.fillText(config.title, plot.x, plot.y - 7);
+    }
+    ctx.restore();
+    return { x: toX, y: toY };
+  }
+
+  function chartMarker(ctx, shape, x, y, color) {
+    ctx.beginPath();
+    if (shape === 'square') {
+      ctx.rect(x - 2.6, y - 2.6, 5.2, 5.2);
+    } else if (shape === 'triangle') {
+      ctx.moveTo(x, y - 3.4);
+      ctx.lineTo(x + 3.4, y + 2.4);
+      ctx.lineTo(x - 3.4, y + 2.4);
+      ctx.closePath();
+    } else {
+      ctx.arc(x, y, 2.8, 0, Math.PI * 2);
+    }
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+  }
+
+  function drawLineSeries(ctx, points, scales, style) {
+    if (!points.length) return;
+    ctx.save();
+    ctx.beginPath();
+    points.forEach(function (point, index) {
+      const x = scales.x(point[0]);
+      const y = scales.y(point[1]);
+      if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = style.color;
+    ctx.lineWidth = 1.7;
+    ctx.lineJoin = 'round';
+    ctx.setLineDash(style.dash || []);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    points.forEach(function (point) {
+      chartMarker(ctx, style.marker, scales.x(point[0]), scales.y(point[1]), style.color);
+    });
+    ctx.restore();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 10.1 彩色实测（风景照片 30 组）：数据来自 web/color_reference.js    */
+  /* ------------------------------------------------------------------ */
+
+  /* 三种采样格式的线型；横轴统一用完整文件 bpp，便于和灰度页对照 */
+  const MATLAB_SUBSAMPLING_STYLE = [
+    { key: '444', label: '4:4:4 不降采样', color: '#1d4ed8', dash: [], marker: 'circle' },
+    { key: '422', label: '4:2:2 水平减半', color: '#c2410c', dash: [6, 4], marker: 'square' },
+    { key: '420', label: '4:2:0 水平垂直都减半', color: '#0f766e', dash: [2, 3], marker: 'triangle' }
+  ];
+
+  /* color_reference.js 由 src/run_color_experiment.m 生成：每项含 quality / subsampling /
+     fileBytes / psnr / yPsnr；这里只按尺寸把字节换成 bpp，不重算任何编码 */
+  function colorReferenceData() {
+    const reference = window.COLOR_REFERENCE;
+    if (!reference || !Array.isArray(reference.cases) || !reference.cases.length) return null;
+    const pixels = reference.width * reference.height;
+    return {
+      reference: reference,
+      points: reference.cases.map(function (item) {
+        return {
+          quality: item.quality,
+          subsampling: item.subsampling,
+          fileBytes: item.fileBytes,
+          bpp: item.fileBytes * 8 / pixels,
+          psnr: item.psnr,
+          yPsnr: item.yPsnr
+        };
+      })
+    };
+  }
+
+  function colorSeries(data, subsampling, field, axis) {
+    return data.points
+      .filter(function (point) { return point.subsampling === subsampling; })
+      .sort(function (a, b) { return a[axis] - b[axis]; })
+      .map(function (point) { return [point[axis], point[field], point.quality]; });
+  }
+
+  function colorCaseAt(data, quality, subsampling) {
+    return data.points.filter(function (point) {
+      return point.quality === quality && point.subsampling === subsampling;
+    })[0] || null;
+  }
+
+  /* 左：三种采样的率失真；右：同 QF 下 4:2:2 / 4:2:0 的体积占 4:4:4 的百分比 */
+  function drawColorCostPanels(target, data, columns) {
+    const ctx = target.ctx;
+    const cols = columns === 1 ? 1 : 2;
+    const rows = Math.ceil(2 / cols);
+    const gap = { x: 56, y: 44 };
+    const panelW = (target.w - 24 - gap.x * (cols - 1)) / cols;
+    const panelH = (target.h - 8 - gap.y * (rows - 1)) / rows;
+    const qualities = data.reference.qualities;
+
+    const extremes = data.points.reduce(function (acc, point) {
+      return {
+        minPsnr: Math.min(acc.minPsnr, point.psnr),
+        maxPsnr: Math.max(acc.maxPsnr, point.psnr),
+        maxBpp: Math.max(acc.maxBpp, point.bpp)
+      };
+    }, { minPsnr: Infinity, maxPsnr: -Infinity, maxBpp: 0 });
+    const xMax = Math.ceil(extremes.maxBpp * 1.04 * 2) / 2;
+    const yMin = Math.floor((extremes.minPsnr - 1) / 5) * 5;
+    const yMax = Math.ceil((extremes.maxPsnr + 1) / 5) * 5;
+
+    const rateBox = { x: 12, y: 4, w: panelW, h: panelH };
+    const rateScales = drawChartFrame(ctx, rateBox, {
+      xMin: 0, xMax: xMax, yMin: yMin, yMax: yMax,
+      xTicks: niceTicks(0, xMax, 5),
+      yTicks: niceTicks(yMin, yMax, 4),
+      xLabel: 'bpp（完整文件，1024²）',
+      yLabel: 'PSNR / dB',
+      xFormat: function (value) { return value < 10 ? value.toFixed(1) : String(Math.round(value)); },
+      yFormat: function (value) { return String(Math.round(value)); },
+      title: '三种采样的率失真曲线'
+    });
+    MATLAB_SUBSAMPLING_STYLE.forEach(function (style) {
+      drawLineSeries(ctx, colorSeries(data, style.key, 'psnr', 'bpp'), rateScales, style);
+    });
+
+    /* 体积比要用 4:4:4 自己当分母，所以先按 QF 建一张基准表 */
+    const baseline = {};
+    colorSeries(data, '444', 'fileBytes', 'quality').forEach(function (point) {
+      baseline[point[2]] = point[1];
+    });
+    const ratioSeries = ['422', '420'].map(function (key) {
+      const style = MATLAB_SUBSAMPLING_STYLE.filter(function (item) { return item.key === key; })[0];
+      return {
+        style: style,
+        points: colorSeries(data, key, 'fileBytes', 'quality')
+          .filter(function (point) { return baseline[point[2]] > 0; })
+          .map(function (point) { return [point[2], 100 * point[1] / baseline[point[2]], point[2]]; })
+      };
+    });
+    let minRatio = 100;
+    let maxRatio = 100;
+    ratioSeries.forEach(function (item) {
+      item.points.forEach(function (point) {
+        minRatio = Math.min(minRatio, point[1]);
+      });
+    });
+    const ratioMin = Math.max(0, Math.floor((minRatio - 4) / 10) * 10);
+
+    const ratioBox = {
+      x: 12 + (cols === 2 ? panelW + gap.x : 0),
+      y: 4 + (cols === 1 ? panelH + gap.y : 0),
+      w: panelW,
+      h: panelH
+    };
+    const ratioScales = drawChartFrame(ctx, ratioBox, {
+      xMin: qualities[0], xMax: qualities[qualities.length - 1],
+      yMin: ratioMin, yMax: maxRatio + 5,
+      xTicks: [qualities[0], qualities[3], qualities[6], qualities[qualities.length - 1]],
+      yTicks: niceTicks(ratioMin, maxRatio + 5, 3),
+      xLabel: '质量因子 QF',
+      yLabel: '体积占 4:4:4 的 %',
+      xFormat: function (value) { return String(Math.round(value)); },
+      yFormat: function (value) { return value.toFixed(0) + '%'; },
+      title: '同 QF 下的体积比'
+    });
+    ratioSeries.forEach(function (item) { drawLineSeries(ctx, item.points, ratioScales, item.style); });
+
+    /* 100% 参考线：4:4:4 自己，两条线都在它下面 */
+    const hundredY = ratioScales.y(100);
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(ratioScales.x(qualities[0]), hundredY);
+    ctx.lineTo(ratioScales.x(qualities[qualities.length - 1]), hundredY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#7c8ba1';
+    ctx.font = '10px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('4:4:4 = 100%', ratioScales.x(qualities[qualities.length - 1]), hundredY - 2);
+    ctx.restore();
+  }
+
+  function renderMatlabColorStep() {
+    const data = colorReferenceData();
+    const caption = '同一张 1024×1024 风景照片的 30 组实测：左 = 三种采样的率失真，右 = 同 QF 下的体积比。';
+    let note;
+    if (data) {
+      const qualities = data.reference.qualities;
+      const midQuality = qualities.indexOf(50) >= 0 ? 50 : qualities[Math.floor(qualities.length / 2)];
+      const topQuality = qualities[qualities.length - 1];
+      const midBase = colorCaseAt(data, midQuality, '444');
+      const midSmall = colorCaseAt(data, midQuality, '420');
+      const topBase = colorCaseAt(data, topQuality, '444');
+      const topSmall = colorCaseAt(data, topQuality, '420');
+      note = '数据来源：<code>src/run_color_experiment.m</code> → <code>web/color_reference.js</code>' +
+        (data.reference.generatedAt
+          ? '（' + escapeHTML(data.reference.generatedAt) + '，MATLAB ' + escapeHTML(data.reference.generatedBy || '') + '）'
+          : '') + '。';
+      if (midBase && midSmall && topBase && topSmall) {
+        note += 'QF = ' + midQuality + ' 时 4:2:0 的文件是 4:4:4 的 ' +
+          (100 * midSmall.fileBytes / midBase.fileBytes).toFixed(1) + '%，PSNR 低 ' +
+          (midBase.psnr - midSmall.psnr).toFixed(2) + ' dB；QF = ' + topQuality + ' 时体积占比 ' +
+          (100 * topSmall.fileBytes / topBase.fileBytes).toFixed(1) + '%，PSNR 差却扩大到 ' +
+          (topBase.psnr - topSmall.psnr).toFixed(2) + ' dB——此时误差主要来自被砍掉的色度，不是量化。';
+      }
+    } else {
+      note = '未找到彩色实测数据：请先运行 <code>src/export_color_reference.m</code> 重新生成 <code>web/color_reference.js</code>。';
+    }
+    stage.innerHTML = matlabLegendHTML(MATLAB_SUBSAMPLING_STYLE) +
+      '<figure>' + canvasTag('matlabColorChart', caption) + '<figcaption>' + caption + '</figcaption></figure>' +
+      '<p class="note">' + note + '</p>';
+    if (!data) return;
+    const narrow = SMALL_SCREEN;
+    drawColorCostPanels(setupCanvas('matlabColorChart', narrow ? 420 : 900, narrow ? 700 : 350),
+      data, narrow ? 1 : 2);
+  }
+
+  /* 一张图里塞四个子图（四张输入图各一块），与 MATLAB 图 02 的四宫格对应；
+     窄屏改成单列堆叠，避免四个子图被压成邮票大小 */
+  function drawRatePanels(target, data, columns) {
+    const ctx = target.ctx;
+    const cols = columns === 1 ? 1 : 2;
+    const rows = Math.ceil(data.images.length / cols);
+    const gap = { x: 52, y: 40 };
+    const panelW = (target.w - 24 - gap.x * (cols - 1)) / cols;
+    const panelH = (target.h - 10 - gap.y * (rows - 1)) / rows;
+    data.images.forEach(function (image, imageIndex) {
+      const box = {
+        x: 12 + (imageIndex % cols) * (panelW + gap.x),
+        y: 6 + Math.floor(imageIndex / cols) * (panelH + gap.y),
+        w: panelW,
+        h: panelH
+      };
+      const series = MATLAB_METHOD_STYLE.map(function (style, methodIndex) {
+        return { style: style, points: matlabSeries(data, imageIndex, methodIndex, 'psnr', 'bpp') };
+      });
+      let maxBpp = 0;
+      let minPsnr = Infinity;
+      let maxPsnr = -Infinity;
+      series.forEach(function (item) {
+        item.points.forEach(function (point) {
+          if (point[0] > maxBpp) maxBpp = point[0];
+          if (point[1] < minPsnr) minPsnr = point[1];
+          if (point[1] > maxPsnr) maxPsnr = point[1];
+        });
+      });
+      if (!isFinite(minPsnr)) return;
+      const xMax = Math.ceil(maxBpp * 1.04 * 2) / 2;
+      const yMin = Math.floor((minPsnr - 2) / 5) * 5;
+      const yMax = Math.ceil((maxPsnr + 1) / 5) * 5;
+      const scales = drawChartFrame(ctx, box, {
+        xMin: 0, xMax: xMax, yMin: yMin, yMax: yMax,
+        xTicks: niceTicks(0, xMax, cols === 1 ? 4 : 5),
+        yTicks: niceTicks(yMin, yMax, 4),
+        xLabel: 'bpp（完整文件）',
+        yLabel: 'PSNR / dB',
+        xFormat: function (value) { return value < 10 ? value.toFixed(1) : String(Math.round(value)); },
+        yFormat: function (value) { return String(Math.round(value)); },
+        title: image.label
+      });
+      series.forEach(function (item) { drawLineSeries(ctx, item.points, scales, item.style); });
+    });
+  }
+
+  function renderMatlabRateStep() {
+    const data = matlabData();
+    const caption = '四张 256×256 灰度图各自的率失真曲线：横轴完整文件 bpp，纵轴 PSNR / dB；' +
+      '每条线是同一方法 10 个实测点，只连线不平滑。';
+    stage.innerHTML = matlabLegendHTML(MATLAB_METHOD_STYLE) +
+      '<figure>' + canvasTag('matlabRateChart', caption) + '<figcaption>' + caption + '</figcaption></figure>' +
+      '<p class="note">' + (data
+        ? '数据来自 <code>' + escapeHTML(data.source.measurements) + '</code>（' + escapeHTML(data.environment || 'MATLAB R2024b') +
+          '，' + escapeHTML(data.generatedAt || '') + '），共 ' + data.rows.length + ' 组实测，由 MATLAB 导出后在前端重绘，未做插值。' +
+          '同一张风景照片的彩色 30 组在上一条 10.1，09 页还保留逐位对照表。'
+        : '未找到 MATLAB 实测数据：请先在仓库根目录运行 <code>python tools/export_matlab_results.py</code> 生成 <code>web/matlab_results.js</code>。') +
+      '</p>';
+    if (!data) return;
+    const narrow = SMALL_SCREEN;
+    drawRatePanels(setupCanvas('matlabRateChart', narrow ? 420 : 820, narrow ? 980 : 470), data, narrow ? 1 : 2);
+  }
+
+  /* 左：零系数比例，右：压缩比；横轴都是质量参数 Q，四张图各一条线。
+     窄屏同样改成上下两张，免得两块面板挤在一起 */
+  function drawSparsityPanels(target, data, columns) {
+    const ctx = target.ctx;
+    const cols = columns === 1 ? 1 : 2;
+    const gap = { x: 56, y: 44 };
+    const panelW = (target.w - 24 - gap.x * (cols - 1)) / cols;
+    const panelH = (target.h - 8 - gap.y) / 2;
+    const qualities = data.qualities;
+    let maxRatio = 0;
+    data.images.forEach(function (image, imageIndex) {
+      matlabSeries(data, imageIndex, 0, 'compressionRatio', 'quality').forEach(function (point) {
+        if (point[1] > maxRatio) maxRatio = point[1];
+      });
+    });
+    const ratioTop = Math.ceil(maxRatio * 1.05 / 10) * 10;
+    const panels = [
+      {
+        field: 'zeroFraction', yMin: 0, yMax: 100,
+        yTicks: [0, 25, 50, 75, 100],
+        yLabel: '零系数比例 / %',
+        yFormat: function (value) { return String(value); },
+        title: '量化后零系数占比'
+      },
+      {
+        field: 'compressionRatio', yMin: 0, yMax: ratioTop,
+        yTicks: niceTicks(0, ratioTop, 4),
+        yLabel: '压缩比（原始 / 文件）',
+        yFormat: function (value) { return String(Math.round(value)); },
+        title: 'JPEG 完整文件压缩比'
+      }
+    ];
+    panels.forEach(function (panel, panelIndex) {
+      const box = {
+        x: 12 + (panelIndex % cols) * (panelW + gap.x),
+        y: 4 + Math.floor(panelIndex / cols) * (panelH + gap.y),
+        w: panelW,
+        h: panelH
+      };
+      const scales = drawChartFrame(ctx, box, {
+        xMin: qualities[0], xMax: qualities[qualities.length - 1],
+        yMin: panel.yMin, yMax: panel.yMax,
+        xTicks: [qualities[0], qualities[3], qualities[6], qualities[qualities.length - 1]],
+        yTicks: panel.yTicks,
+        xLabel: '质量参数 Q（不是画质百分比）',
+        yLabel: panel.yLabel,
+        xFormat: function (value) { return String(Math.round(value)); },
+        yFormat: panel.yFormat,
+        title: panel.title
+      });
+      data.images.forEach(function (image, imageIndex) {
+        const points = matlabSeries(data, imageIndex, 0, panel.field, 'quality');
+        if (panel.field === 'zeroFraction') {
+          points.forEach(function (point) { point[1] = point[1] * 100; });
+        }
+        drawLineSeries(ctx, points, scales, {
+          color: MATLAB_IMAGE_COLORS[imageIndex % MATLAB_IMAGE_COLORS.length],
+          dash: [],
+          marker: 'circle'
+        });
+      });
+    });
+  }
+
+  function renderMatlabSparsityStep() {
+    const data = matlabData();
+    const caption = '固定「自编：频率加权」量化表，四张图的零系数比例与完整文件压缩比随 Q 的变化。';
+    stage.innerHTML = matlabLegendHTML(data ? data.images.map(function (image, index) {
+      return { color: MATLAB_IMAGE_COLORS[index % MATLAB_IMAGE_COLORS.length], label: image.label };
+    }) : []) +
+      '<figure>' + canvasTag('matlabSparsityChart', caption) + '<figcaption>' + caption + '</figcaption></figure>' +
+      '<p class="note">' + (data
+        ? '同一批 40 个实测点（4 图 × 10 档 Q）换成两种口径：左边是熵编码前的中间量，右边才是真正写进文件的体积。' +
+          '两条曲线不同形，正说明<b>零系数比例不能代替压缩比</b>。'
+        : '未找到 MATLAB 实测数据：请先运行 <code>python tools/export_matlab_results.py</code>。') +
+      '</p>';
+    if (!data) return;
+    const narrow = SMALL_SCREEN;
+    drawSparsityPanels(setupCanvas('matlabSparsityChart', narrow ? 420 : 900, narrow ? 700 : 330), data, narrow ? 1 : 2);
+  }
+
+  /* 一块面板里画若干组柱：每组 = 一张图的 4 个等码率点，柱高 = 加权 − 等步长的 PSNR 差 */
+  function drawBarGroups(ctx, box, groups, options) {
+    const values = [];
+    groups.forEach(function (group) {
+      group.rows.forEach(function (row) { values.push(row.deltaPsnr); });
+    });
+    if (!values.length) return;
+    const lowest = Math.min.apply(null, values);
+    const highest = Math.max.apply(null, values);
+    const yMin = Math.min(-0.5, Math.floor(lowest - 0.4));
+    const yMax = Math.max(0.6, Math.ceil(highest + 0.3));
+    const barCount = Math.max.apply(null, groups.map(function (group) { return group.rows.length; }));
+    /* perBar：一块面板只放一组时，横轴刻度落在每根柱子上（①②③④），而不是组中心 */
+    const perBar = !!options.perBar;
+    const slots = perBar ? barCount : groups.length;
+    const scales = drawChartFrame(ctx, box, {
+      xMin: 0, xMax: slots, yMin: yMin, yMax: yMax,
+      xTicks: perBar
+        ? groups[0].rows.map(function (row, rank) { return rank + 0.5; })
+        : groups.map(function (group, index) { return index + 0.5; }),
+      yTicks: niceTicks(yMin, yMax, 4),
+      xLabel: options.xLabel,
+      yLabel: 'ΔPSNR / dB',
+      xFormat: options.xFormat,
+      yFormat: function (value) { return value.toFixed(1); },
+      title: options.title
+    });
+    /* 柱子中心必须与上方刻度文字共用同一套坐标映射，否则组名会和柱子错位 */
+    const slotWidth = scales.x(1) - scales.x(0);
+    const barWidth = Math.min(34, perBar ? slotWidth / 1.7 : slotWidth / (barCount + 1.4));
+    const zeroY = scales.y(0);
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    groups.forEach(function (group, groupIndex) {
+      const center = scales.x(groupIndex + 0.5);
+      group.rows.forEach(function (row, rank) {
+        const x = perBar ? scales.x(rank + 0.5)
+          : center + (rank - (group.rows.length - 1) / 2) * (barWidth + 5);
+        const top = scales.y(row.deltaPsnr);
+        ctx.fillStyle = row.deltaPsnr < 0 ? '#c2410c' : '#15803d';
+        ctx.fillRect(x - barWidth / 2, Math.min(zeroY, top), barWidth, Math.abs(top - zeroY));
+        ctx.fillStyle = '#52627a';
+        ctx.font = '9px Consolas, "Cascadia Mono", monospace';
+        ctx.fillText(row.deltaPsnr.toFixed(1), x, row.deltaPsnr < 0 ? top + 9 : top - 9);
+      });
+    });
+    /* 零线单独描一遍：正负是这张图唯一的判读依据 */
+    ctx.strokeStyle = '#8fa0b6';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(scales.x(0), zeroY);
+    ctx.lineTo(scales.x(slots), zeroY);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /* 宽屏：一张图里 4 组并排；窄屏：每张图一块面板上下堆叠，柱子才够宽 */
+  function drawMatchedBars(target, data, stacked) {
+    const ctx = target.ctx;
+    ctx.clearRect(0, 0, target.w, target.h);
+    const groups = data.images.map(function (image, imageIndex) {
+      return {
+        imageIndex: imageIndex,
+        rows: data.matchedRate
+          .filter(function (row) { return row.image === imageIndex; })
+          .sort(function (a, b) { return a.targetBpp - b.targetBpp; })
+      };
+    }).filter(function (group) { return group.rows.length; });
+    if (!groups.length) return;
+    if (!stacked) {
+      drawBarGroups(ctx, { x: 6, y: 4, w: target.w - 12, h: target.h - 8 }, groups, {
+        xLabel: '每张图从左到右 4 根柱 = 它自己的 4 个目标 bpp（升序，数值见下表）',
+        xFormat: function (value) { return matlabImageLabel(data, groups[Math.floor(value)].imageIndex, true); }
+      });
+      return;
+    }
+    const gap = 40;
+    const panelH = (target.h - 8 - gap * (groups.length - 1)) / groups.length;
+    groups.forEach(function (group, index) {
+      drawBarGroups(ctx, { x: 6, y: 4 + index * (panelH + gap), w: target.w - 12, h: panelH }, [group], {
+        perBar: true,
+        xLabel: '该图的 4 个目标 bpp（升序）',
+        xFormat: function (value) { return '#' + (Math.floor(value) + 1); },
+        title: matlabImageLabel(data, group.imageIndex, false)
+      });
+    });
+  }
+
+  function matlabMatchedTableHTML(data) {
+    const rows = data.matchedRate.map(function (row) {
+      return '<tr><td>' + escapeHTML(matlabImageLabel(data, row.image, false)) + '</td>' +
+        '<td>' + row.targetBpp.toFixed(3) + '</td>' +
+        '<td>' + row.weightedPsnr.toFixed(2) + '</td>' +
+        '<td>' + row.uniformPsnr.toFixed(2) + '</td>' +
+        '<td class="' + (row.deltaPsnr < 0 ? 'warn' : 'ok') + '">' +
+        (row.deltaPsnr > 0 ? '+' : '') + row.deltaPsnr.toFixed(2) + '</td></tr>';
+    }).join('');
+    return '<details class="matlab-ref">' +
+      '<summary class="matlab-ref-head">16 个插值点明细<span>同一目标 bpp 下两种量化表的 PSNR；Δ = 加权 − 等步长（点此展开）</span></summary>' +
+      '<div class="matlab-ref-scroll"><table><thead><tr><th>图像</th><th>目标 bpp</th>' +
+      '<th>加权 PSNR</th><th>等步长 PSNR</th><th>ΔPSNR</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<p class="matlab-ref-foot">数据来源：' + escapeHTML(data.source.matchedRate) +
+      '；插值仅在两条曲线共同覆盖的区间内进行，不外推，插值点不是实测点。</p>' +
+      '</details>';
+  }
+
+  function renderMatlabMatchedStep() {
+    const data = matlabData();
+    const caption = '等码率下的 PSNR 差：柱在零线以下表示该码率点「等步长」反而更好。';
+    stage.innerHTML = '<figure>' + canvasTag('matlabMatchedChart', caption) +
+      '<figcaption>' + caption + '</figcaption></figure>' +
+      '<p class="note">' + (data
+        ? '辣椒与文字图上等步长在四个目标码率上都更高（ΔPSNR 为负），平滑渐变图上加权略好（ΔPSNR 为 +0.19～+0.65 dB）。' +
+          '本轮数据不支持「频率加权总是更好」，报告里也是这么写的。'
+        : '未找到 MATLAB 实测数据：请先运行 <code>python tools/export_matlab_results.py</code>。') +
+      '</p>' + (data ? matlabMatchedTableHTML(data) : '');
+    if (!data) return;
+    const narrow = SMALL_SCREEN;
+    drawMatchedBars(setupCanvas('matlabMatchedChart', narrow ? 420 : 900, narrow ? 940 : 320), data, narrow);
   }
 
   /* 误差图默认画「原始 vs 解码重建」并放大 10 倍；
@@ -5498,7 +6692,9 @@
     renderDctStep, renderQuantStep, renderZigzagStep, renderRleStep,
     renderHuffmanStep, renderBitstreamStep, renderDecEntropyStep,
     renderDequantStep, renderIdctStep, renderRecolorTailStep,
-    renderVisualLumaStep, renderVisualFreqStep, renderOpeningStep
+    renderVisualLumaStep, renderVisualFreqStep, renderOpeningStep,
+    renderMatlabColorStep, renderMatlabRateStep, renderMatlabSparsityStep,
+    renderMatlabMatchedStep
   ];
 
   /* ------------------------------------------------------------------ */
@@ -5536,6 +6732,7 @@
           else playZigzag(state.zigStep);
         }
         else if (action === 'quant') startQuantAnim();
+        else if (action === 'qfsweep') startQfSweep();
         else if (action === 'rle') startRleAnim();
         else if (action === 'bitwrite') startBitWriteAnim();
         else if (action === 'assembly') startAssemblyAnim();
@@ -5545,6 +6742,7 @@
         else if (action === 'twopass') startDctTwoPass();
         else if (action === 'goto') gotoChapter(button.getAttribute('data-target'));
         else if (action === 'basissum') startBasisSum();
+        else if (action === 'coefftour') toggleCoeffTour();
       });
     });
     syncZigzagPlayButton();
@@ -5668,7 +6866,8 @@
     state.flowIndex = clamp(index, 0, FLOW_ENTRIES.length - 1);
     const entry = FLOW_ENTRIES[state.flowIndex];
     state.step = entry.step;
-    state.selectedCoeff = -1;
+    /* 二维系数页（DCT ⑤）从 (0,0) 起，进来就自动逐项巡览；其余页沿用“默认选 AC 最大项” */
+    state.selectedCoeff = entry.chapter === 'dct' && entry.subIndex === 4 && !ANIM.reduced ? 0 : -1;
     state.dctView = currentDctView();
     state.dctRow = -1;
     /* 一维页从 0 项开始（进入后自动叠一遍），其余 DCT 页停在「已完成」态 */
@@ -5688,6 +6887,9 @@
       state.dctBasisHold = null;
     }
     stopVisualAnimations();
+    /* 量化页拖过 QF 还没松手就切页：先把整幅编码补齐，
+       后面 Zigzag / 游程 / 解码各节拿到的才是新 QF 的数据 */
+    if (state.encoded && state.encodedQuality !== state.Q) encodeCurrent();
     render();
     if (mainScroll) mainScroll.scrollTop = 0;
     /* 底部步骤条不画滚动条后，窄屏上当前节点可能落在可视区外：
@@ -5721,6 +6923,15 @@
         state.dctSumHold = null;
         const current = FLOW_ENTRIES[state.flowIndex];
         if (current && current.chapter === 'dct' && current.subIndex === 5) startBasisSum(0);
+      }, 600);
+    }
+    /* 二维系数页（DCT ⑤，subIndex 4）：进来先按 (u,v) 顺序逐项巡览，
+       一拍换一项，走完 64 项停一下再从头循环 */
+    if (entry.chapter === 'dct' && entry.subIndex === 4 && !ANIM.reduced) {
+      state.coeffTourHold = setTimeout(function () {
+        state.coeffTourHold = null;
+        const current = FLOW_ENTRIES[state.flowIndex];
+        if (current && current.chapter === 'dct' && current.subIndex === 4) startCoeffTour(0);
       }, 600);
     }
     /* Zigzag 页（编码 07.1）：进来 600ms 后自动从 0 扫到 64，之后持续循环 */
@@ -6020,12 +7231,15 @@
     stopZigzag();
     stopLumaDemo();
     stopZoomDemo();
-    ['quantTimer', 'rleTimer', 'bitTimer', 'decodeTimer', 'idctTimer', 'tourTimer', 'zigTimer', 'zigHold', 'dctPassTimer', 'dctPassHold', 'dctBasisHold', 'dctSumTimer', 'dctSumHold', 'assemblyTimer'].forEach(function (key) {
+    ['quantTimer', 'qfTimer', 'rleTimer', 'bitTimer', 'decodeTimer', 'idctTimer', 'tourTimer', 'zigTimer', 'zigHold', 'dctPassTimer', 'dctPassHold', 'dctBasisHold', 'dctSumTimer', 'dctSumHold', 'coeffTourTimer', 'coeffTourHold', 'assemblyTimer'].forEach(function (key) {
       if (state[key]) {
         clearInterval(state[key]);
         state[key] = null;
       }
     });
+    /* QF 扫掠被打断（换页、重编码）时不再记着“该回到哪一档”，免得下次误复位 */
+    state.qfReturn = null;
+    syncQfSweepButton();
     if (basisFrame) {
       cancelAnimationFrame(basisFrame);
       basisFrame = null;
@@ -6286,7 +7500,8 @@
       used += block.symbols[i].code.length + block.symbols[i].amplitude.length;
     }
     if (state.decodeStep <= 0) {
-      readout.textContent = '从位位置 ' + block.bitStart + ' 开始逐位解码。';
+      /* 表格在窄屏会滚动，这里给出总数，读者知道还有多少行没看到 */
+      readout.textContent = '共 ' + rows.length + ' 个符号，从位位置 ' + block.bitStart + ' 开始逐位解码。';
       return;
     }
     readout.textContent = '位位置 ' + (block.bitStart + used) + ' / ' + block.bitEnd +
@@ -6465,7 +7680,9 @@
     { id: 'quant', short: '量化', title: '量化：系数域中真正丢信息的一步', code: '06', steps: [5] },
     { id: 'packResult', short: '码流与结果', title: 'Zigzag/Huffman 与熵编码输出', code: '07', steps: [6, 7, 8, 9] },
     { id: 'decode', short: '解码原理', title: '解码：位流如何变回像素', code: '08', steps: [10, 11, 12, 13] },
-    { id: 'result', short: '二次压缩结果', title: '二次压缩结果', code: '09', steps: [13] }
+    { id: 'result', short: '二次压缩结果', title: '二次压缩结果', code: '09', steps: [13] },
+    /* MATLAB 批量实测：彩色页（风景照片，color_reference.js）排在最前，再是灰度 120 组的三页 */
+    { id: 'matlab', short: 'MATLAB 实测', title: 'MATLAB 批量实验数据', code: '10', steps: [17, 18, 19, 20] }
   ];
 
   FLOW_ENTRIES = FLOW_CHAPTERS.reduce(function (list, chapter, chapterIndex) {
@@ -6501,6 +7718,7 @@
 
   function init() {
     buildSamples();
+    bindTableZoomEvents();
     lastViewport = {
       key: (window.innerWidth || 1200) + 'x' + (window.devicePixelRatio || 1).toFixed(2),
       height: window.innerHeight || 800

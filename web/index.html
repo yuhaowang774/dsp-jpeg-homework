@@ -7,6 +7,7 @@
 <script defer src="photos.js"></script>
 <script defer src="demo_data.js"></script>
 <script defer src="color_reference.js"></script>
+<script defer src="matlab_results.js"></script>
 <script defer src="jpeg_codec.js"></script>
 <script defer src="app.js"></script>
 <title>JPEG 编解码流程实验台</title>
@@ -35,7 +36,10 @@
     /* 量化页四宫格：图块边长与宫格总宽联动，宫格在首屏里铺开；
        算式区不在演示台内，而是挂在下方说明面板里，滚动才看见。 */
     --quant-tile:clamp(210px,36vh,400px);
-    --quant-grid-w:calc(var(--quant-tile) * 2 + 124px);
+    --quant-grid-w:calc(var(--quant-tile) * 2 + 82px);
+    /* 演示台与说明面板共用的列宽上限：两者始终同宽、同边距，
+       换分辨率（1080p / 1440p / 4K）时左右边缘都不会错开 */
+    --main-col-max:min(94vw,1380px);
   }
   *{box-sizing:border-box}
   /* 屏幕阅读器专用文本与跳转链接：可视区域不变，只为键盘/读屏用户提供入口 */
@@ -58,7 +62,7 @@
   .stepper button.on{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 2px 7px rgba(29,78,216,.24)}
   .stepper button.on .n{color:rgba(255,255,255,.75)}
   .main{--main-top:8px;--main-bottom:62px;--main-pad-top:8px;--main-pad-bottom:18px;position:absolute;top:var(--main-top);bottom:var(--main-bottom);left:0;right:0;display:flex;flex-direction:column;gap:12px;padding:var(--main-pad-top) 12px var(--main-pad-bottom);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
-  .left{flex:0 0 auto;background:linear-gradient(180deg,#fff 0%,#fcfdff 100%);border:1px solid var(--line);border-radius:16px;padding:18px 20px;box-shadow:var(--shadow-sm);display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1.15fr) minmax(0,1fr);gap:0 30px;align-items:start}
+  .left{flex:0 0 auto;background:linear-gradient(180deg,#fff 0%,#fcfdff 100%);border:1px solid var(--line);border-radius:16px;padding:20px 22px;box-shadow:var(--shadow-sm);display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1.15fr) minmax(0,1fr);gap:0 30px;align-items:start}
   .panel-col{display:flex;flex-direction:column;min-width:0}
   .panel-col>.sec:first-child{border-top:0;padding-top:0;margin-top:0}
   .step-kicker{font:700 11px/1 Consolas,monospace;color:var(--blue);letter-spacing:.8px}
@@ -84,7 +88,7 @@
   .tools button.primary{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 2px 7px rgba(29,78,216,.22)}
   .tools button.primary:hover{background:#1a45c4;color:#fff}
   .right{min-width:0;display:flex;flex:0 0 auto}
-  .main>.right,.main>.left{width:100%;max-width:min(94vw,1380px);margin-left:auto;margin-right:auto}
+  .main>.right,.main>.left{width:100%;max-width:var(--main-col-max);margin-left:auto;margin-right:auto}
   .stage{background:linear-gradient(180deg,#fff 0%,#fcfdff 100%);border:1px solid var(--line);border-radius:16px;padding:20px 22px;flex:1;min-width:0;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;min-height:calc(100vh - var(--main-top) - var(--main-bottom) - var(--main-pad-top) - var(--main-pad-bottom))}
   .stage>*{flex-shrink:0}
   /* 移动端浏览器地址栏会吃掉 100vh，支持 dvh 时改用动态视口高度 */
@@ -163,25 +167,58 @@
   .dct-1d-top .dct-row-picker{margin-bottom:6px}
   .dct-1d-top .dct-row-picker button{padding:2px 7px;font-size:10.5px}
   .dct-1d-top .dct-use-row{margin-bottom:0}
-  /* DCT ② 基函数页的公式条：等宽字体，与画布上的 k 标注呼应 */
-  .dct-cosine-formula{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;justify-content:center;
-    margin-top:10px;padding:10px 14px;background:var(--surface-soft);border:1px solid var(--border-soft);border-radius:10px}
-  .dct-cosine-formula code{font-family:Consolas,"Cascadia Mono",monospace;font-size:13px;color:#1e3a8a;font-weight:700}
-  .dct-cosine-formula span{font-size:11.5px;color:var(--muted)}
+  /* DCT ② 基函数页的公式卡：主式用数学衬线排版，上标下标与分数线都按排版规矩走，
+     定义（α、n）与正交性放在下面一行小字，避免全部挤在一条基线上 */
+  .dct-cosine-formula{display:flex;flex-direction:column;align-items:center;gap:9px;
+    width:100%;max-width:900px;margin:8px auto 2px;padding:14px 20px 12px;
+    background:linear-gradient(180deg,#fbfdff 0%,#f5f8fd 100%);border:1px solid var(--border-soft);border-radius:12px;
+    box-shadow:var(--shadow-sm)}
+  .dcf-eq{display:flex;align-items:center;justify-content:center;gap:5px;line-height:1.5;
+    font-family:"Cambria Math","Latin Modern Math","STIX Two Math",Cambria,Georgia,"Times New Roman",serif;
+    font-size:clamp(17px,1.35vw,22px);color:#0f172a;white-space:nowrap}
+  .dcf-eq i,.dcf-legend i{font-style:italic;padding-right:.02em}
+  .dcf-eq sub,.dcf-legend sub{font-size:.62em;line-height:0;vertical-align:-.28em;font-style:italic}
+  .dcf-op{color:#64748b;margin:0 2px}
+  .dcf-cos{margin-left:2px;letter-spacing:.01em}
+  /* 方括号画出来而不是打字符：高度自动跟随分数线，不用挑字号 */
+  .dcf-bracket{align-self:stretch;width:6px;margin:0 4px;border:1.5px solid #94a3b8;border-right:0;border-radius:3px 0 0 3px}
+  .dcf-bracket.end{border:1.5px solid #94a3b8;border-left:0;border-radius:0 3px 3px 0;margin:0 2px 0 4px}
+  .dcf-frac{display:inline-flex;flex-direction:column;align-items:center;font-size:.86em;line-height:1.18}
+  .dcf-num{padding:0 6px 1px}
+  .dcf-den{padding:1px 8px 0;border-top:1.4px solid currentColor}
+  .dcf-legend{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px 10px;
+    font-size:12.5px;line-height:1.75;color:#52627a}
+  .dcf-note{white-space:nowrap}
+  .dcf-note .dcf-m{font-family:"Cambria Math","Latin Modern Math",Cambria,Georgia,"Times New Roman",serif;
+    font-size:13.5px;color:#1e3a8a}
+  .dcf-sep{color:#cbd5e1}
+  /* 根号：√ 字符 + 被开方数上方的横线，凑成书上那种带顶线的根号 */
+  .dcf-sqrt{display:inline-block;color:inherit}
+  .dcf-rad{border-top:1.4px solid currentColor;padding:0 2px 0 1.5px;margin-left:-1.5px}
+  /* 宽屏：主式在左、两条定义在右，竖线分隔，公式卡不会左右各留一大片空白 */
+  @media (min-width:820px){
+    .dct-cosine-formula{flex-direction:row;justify-content:center;gap:26px;padding:14px 24px}
+    .dcf-legend{flex-direction:column;align-items:flex-start;gap:1px;padding-left:26px;border-left:1px solid var(--border-soft)}
+    .dcf-sep{display:none}
+  }
+  @media (max-width:900px){
+    .dct-cosine-formula{padding:12px 12px 10px}
+    .dcf-note{white-space:normal;text-align:center}
+  }
   @media (max-width:900px){.dct-strips{grid-template-columns:1fr}}
   /* 行列两遍页：底部“当前这一行/列”宽图与上方三张矩阵同宽，图注与读数已移除 */
   .dct-pass-row{margin-top:10px}
   .dct-pass-row canvas{max-width:100%;margin:0 auto}
   /* 游程编码页：前 4 个典型符号的解剖卡 */
-  .rle-anatomy{margin-top:12px}
-  .rle-anatomy .subcap{margin-bottom:6px}
-  .rle-anatomy-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-  .rle-anatomy-card{min-width:0;padding:8px 11px;border:1px solid var(--border-soft);border-radius:10px;background:#fbfdff}
-  .rle-anatomy-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:4px}
-  .rle-anatomy-head b{font:700 14px/1.1 Consolas,monospace;color:#1d4ed8}
-  .rle-anatomy-head em{font-style:normal;font-size:10.5px;color:#94a3b8}
-  .rle-anatomy-card p{margin:0;font-size:12px;line-height:1.5;color:#52627a}
-  .rle-anatomy-bits{margin-top:3px!important}
+  .rle-anatomy{margin-top:18px}
+  .rle-anatomy .subcap{margin-bottom:8px;font-size:12.5px}
+  .rle-anatomy-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .rle-anatomy-card{min-width:0;padding:11px 14px;border:1px solid var(--border-soft);border-radius:10px;background:#fbfdff}
+  .rle-anatomy-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:6px}
+  .rle-anatomy-head b{font:700 16px/1.1 Consolas,monospace;color:#1d4ed8}
+  .rle-anatomy-head em{font-style:normal;font-size:11.5px;color:#94a3b8}
+  .rle-anatomy-card p{margin:0;font-size:13px;line-height:1.6;color:#52627a}
+  .rle-anatomy-bits{margin-top:4px!important}
   .rle-anatomy-bits b{font-family:Consolas,monospace;color:#b45309;background:#fff3d6;border-radius:4px;padding:0 4px}
   @media (max-width:900px){
     .rle-anatomy-row{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -205,12 +242,31 @@
   .color-grid figcaption{text-align:center}
   .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
   .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-  /* 量化页：四张 8×8 图排成 2×2 宫格独占演示台首屏，算式区挂在下方说明面板里 */
-  .quant-grid{display:grid;grid-template-columns:repeat(2,minmax(0,calc(var(--quant-tile) + 48px)));justify-content:center;align-content:center;gap:16px 28px;align-items:start;width:100%;max-width:var(--quant-grid-w);margin:0 auto}
+  /* 量化页：左边四宫格（F → q → 商 → Fq），右边一条 QF 拉杆；
+     算式区仍挂在下方说明面板里，滚动才看见 */
+  .quant-layout{display:flex;align-items:center;justify-content:center;gap:18px;width:100%;margin:0 auto}
+  .quant-grid{display:grid;grid-template-columns:repeat(2,minmax(0,calc(var(--quant-tile) + 34px)));justify-content:center;align-content:center;gap:16px 24px;align-items:start;width:100%;max-width:var(--quant-grid-w);margin:0 auto}
+  /* 拉杆面板与宫格同排时，宫格的 margin:auto 会吞掉主轴剩余空间，把面板顶到最右侧 */
+  .quant-layout>.quant-grid{margin:0}
   .quant-grid figure{display:flex;flex-direction:column;align-items:center;width:100%;min-width:0}
   /* setupCanvas 会给每块画布写行内 max-width，这一页的图块尺寸统一由宫格变量决定，覆盖它 */
   .quant-grid canvas{width:100%;max-width:var(--quant-tile)!important;margin:0 auto}
   .quant-grid figcaption{text-align:center;line-height:1.45;margin-top:8px}
+  /* QF 面板：一条拉杆 + scale / 平均步长 / 置零 三个即时读数 */
+  .quant-qf{flex:0 0 clamp(268px,22vw,320px);display:flex;flex-direction:column;gap:9px;min-width:0;
+    background:#f8fafc;border:1px solid #e3eaf4;border-radius:14px;padding:13px 15px 14px}
+  .quant-qf .qf-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+  .quant-qf .qf-head h3{margin:0;font-size:12px;font-weight:700;color:#334155;letter-spacing:.4px}
+  .quant-qf .qf-head span{font-size:11px;color:var(--muted)}
+  .quant-qf .qf-head b{font:700 17px/1 Consolas,monospace;color:var(--blue);margin-left:2px}
+  .quant-qf p{margin:0;font-size:11.5px;line-height:1.6;color:var(--muted)}
+  .qf-range{display:flex;flex-direction:column;gap:1px}
+  .qf-range input[type=range]{width:100%;margin:0;accent-color:var(--blue);cursor:pointer}
+  .qf-range .qf-ends{display:flex;justify-content:space-between;font-size:10.5px;color:#94a3b8}
+  .qf-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+  .qf-meta div{background:#fff;border:1px solid #e6edf6;border-radius:8px;padding:4px 7px;min-width:0}
+  .qf-meta span{display:block;font-size:10px;color:var(--muted);white-space:nowrap}
+  .qf-meta b{display:block;font:700 12px/1.5 Consolas,monospace;color:#152033;white-space:nowrap}
   /* 说明面板里的算例区：横跨三列，与上方说明之间用一条虚线隔开 */
   .panel-quant{grid-column:1/-1;margin-top:18px;padding-top:14px;border-top:1px dashed #e2e8f0}
   .panel-quant .quant-work{max-width:1040px;margin:0 auto}
@@ -239,6 +295,10 @@
   .freq-zoom-side{display:flex;align-items:center;gap:14px;flex-wrap:wrap;max-width:1260px;margin:0 auto;padding:10px 14px;background:var(--surface-soft);border:1px solid var(--border-soft);border-radius:10px}
   .freq-zoom-side .stage-btn{margin-top:0;flex:0 0 auto}
   .freq-zoom-side .note{margin:0;flex:1 1 260px;line-height:1.6}
+  /* MATLAB 实测页的图例：一行彩色短划 + 名称，画在画布外，省下画布内部高度 */
+  .matlab-legend{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:center;margin:0 0 6px;font-size:11.5px;color:#52627a}
+  .matlab-legend span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .matlab-legend i{display:inline-block;width:18px;height:3px;border-radius:2px}
   .matlab-ref{margin-top:16px;border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:#fbfcfe}
   .matlab-ref>summary{cursor:pointer;list-style:none;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
   .matlab-ref>summary::-webkit-details-marker{display:none}
@@ -288,13 +348,27 @@
   table.data td{padding:7px 8px;border-bottom:1px solid var(--border-soft);font-variant-numeric:tabular-nums}
   table.data code{font-family:Consolas,monospace;color:#1e3a8a}
   /* Huffman 表页：直接展示 T.81 标准原文截图（Table K.3 / K.5） */
-  /* K.3 全表 + K.5 上下两半固定三列，图片尽量放大 */
-  .t81-tables{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;margin-top:8px}
+  /* K.3 全表 + K.5 上下两半固定三列；K.3 只有三列内容，列宽让给 K.5 两张 */
+  .t81-tables{display:grid;grid-template-columns:minmax(0,.86fr) minmax(0,1.07fr) minmax(0,1.07fr);
+    gap:12px;align-items:start;margin-top:8px}
   .t81-tables figure{margin:0;display:flex;flex-direction:column;align-items:center;background:#fff;
-    border:1px solid var(--border-soft);border-radius:11px;padding:10px}
-  /* 表图放在页面上方，尽量放大占满可用高度；需要更细再看“原版整页” */
-  .t81-tables img{display:block;max-width:100%;max-height:480px;object-fit:contain;background:#fff}
-  .t81-tables figcaption{font-size:11px;color:var(--muted);margin-top:7px;text-align:center;line-height:1.45}
+    border:1px solid var(--border-soft);border-radius:11px;padding:10px;cursor:zoom-in;
+    transition:border-color var(--dur-fast) var(--ease-standard),box-shadow var(--dur-fast) var(--ease-standard)}
+  .t81-tables figure:hover{border-color:#9db8f5;box-shadow:0 4px 14px rgba(29,78,216,.12)}
+  .t81-tables figure:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+  /* 表图放在页面上方，尽量放大占满可用高度；缩到列宽仍然看不清的，点开看原尺寸 */
+  .t81-tables img{display:block;max-width:100%;max-height:clamp(400px,50vh,640px);object-fit:contain;background:#fff}
+  /* 标准表原图放大层：三列里的小字看不清时点开，按原尺寸铺满窗口 */
+  .zoom-layer{position:fixed;inset:0;z-index:90;display:none;flex-direction:column;align-items:center;
+    justify-content:center;gap:10px;padding:24px;background:rgba(15,23,42,.86);cursor:zoom-out}
+  .zoom-layer.on{display:flex;animation:zoomIn var(--dur-base) var(--ease-standard)}
+  .zoom-layer figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:8px;max-width:100%;max-height:100%}
+  .zoom-layer img{display:block;max-width:100%;max-height:calc(100vh - 96px);object-fit:contain;
+    background:#fff;border-radius:10px;box-shadow:0 18px 48px rgba(2,6,23,.55)}
+  .zoom-layer figcaption{font-size:13px;font-weight:600;color:#e2e8f4}
+  .zoom-layer .zoom-hint{margin:0;font-size:12px;color:rgba(226,232,244,.7)}
+  body.zoom-open{overflow:hidden}
+  @keyframes zoomIn{from{opacity:0}to{opacity:1}}
   @media (max-width:1100px){.t81-tables{grid-template-columns:1fr}}
   .scroll{max-height:330px;overflow:auto;border:1px solid var(--border-soft);border-radius:11px}
   /* 分步标号 ①②③：让「位流 / 码树 / 码字清单」三层的阅读顺序一眼可见 */
@@ -312,21 +386,106 @@
   .bits .cursor{color:#c2410c;font-weight:700}
   /* Huffman 页位流：一格一个符号，格内竖排「符号名 / 码字+幅值位」，
      每格自成一块，读者不用来回查表就知道这一小段比特属于谁 */
-  .bits.bitstream{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px;max-height:none;word-break:normal}
-  .bitstream .bitgroup{display:inline-flex;flex-direction:column;align-items:center;gap:1px;
-    margin:0;padding:4px 9px;min-width:56px;background:#f1f5fd;border:1px solid #e3eaf8;border-radius:7px;white-space:nowrap}
+  /* 位流与上方的标准表之间留一点空隙，两段内容不贴在一起 */
+  .stage>.bits.bitstream{display:flex;flex-wrap:wrap;gap:8px;padding:10px 12px;margin-top:14px;max-height:none;word-break:normal}
+  .bitstream .bitgroup{display:inline-flex;flex-direction:column;align-items:center;gap:2px;
+    margin:0;padding:5px 11px;min-width:64px;background:#f1f5fd;border:1px solid #e3eaf8;border-radius:7px;white-space:nowrap}
   .bitstream .bitgroup:hover{background:#e4ecfa;border-color:#c9d8f2}
   .bitstream .bitgroup>i{font-style:normal}
-  .bitstream .groupname{font-style:normal;font-size:10.5px;line-height:1.2;color:#64748b}
-  .bitstream .codebits{font-size:13.5px;font-weight:700;letter-spacing:.5px}
-  .bitstream .ampbits{font-size:13.5px;font-weight:700;letter-spacing:.5px;background:#ffe6ab;border-radius:3px;padding:0 3px}
+  .bitstream .groupname{font-style:normal;font-size:11.5px;line-height:1.25;color:#64748b}
+  .bitstream .codebits{font-size:15px;font-weight:700;letter-spacing:.5px}
+  .bitstream .ampbits{font-size:15px;font-weight:700;letter-spacing:.5px;background:#ffe6ab;border-radius:3px;padding:0 4px}
+  /* 幅值位右边标出它对应的真实系数：011 = -4，读者不必自己按补码还原 */
+  .bitstream .amprow{display:inline-flex;align-items:baseline;gap:6px}
+  .bitstream .ampvalue{font-style:normal;font-family:Consolas,"Cascadia Mono",monospace;
+    font-size:12px;font-weight:700;color:#5f6b7d;font-variant-numeric:tabular-nums}
   /* 唯一码字清单：一行 chips，统计并入同一行 */
-  .huff-codes{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
-  .huff-stat{font-size:11px;color:#64748b;margin-right:4px}
-  .huff-code{display:inline-flex;align-items:baseline;gap:5px;padding:3px 8px;border:1px solid #e3eaf8;border-radius:7px;background:#fbfdff}
-  .huff-code b{font-size:11px;color:#334155}
-  .huff-code i{font-family:Consolas,monospace;font-style:normal;font-size:11.5px;font-weight:700;color:#1d4ed8}
-  .huff-code em{font-style:normal;font-size:10px;color:#94a3b8}
+  .huff-codes{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:10px}
+  .huff-stat{font-size:12px;color:#64748b;margin-right:4px}
+  .huff-code{display:inline-flex;align-items:baseline;gap:6px;padding:4px 9px;border:1px solid #e3eaf8;border-radius:7px;background:#fbfdff}
+  .huff-code b{font-size:12px;color:#334155}
+  .huff-code i{font-family:Consolas,monospace;font-style:normal;font-size:13px;font-weight:700;color:#1d4ed8}
+  .huff-code em{font-style:normal;font-size:10.5px;color:#94a3b8}
+  /* 编码后的数据：本块所有符号首尾相接的真实 0/1 串，蓝 = 码字、黄 = 幅值位 */
+  .huff-stream{margin-top:12px;padding:9px 13px 10px;border:1px solid var(--border-soft);border-radius:11px;background:#fbfdff}
+  .huff-stream-head{font-size:12.5px;color:#475569;margin-bottom:5px}
+  .huff-stream-head b{color:var(--text);font-variant-numeric:tabular-nums}
+  .huff-bitline{font-family:Consolas,"Cascadia Mono",monospace;font-size:14px;line-height:1.8;
+    letter-spacing:.06em;color:#334155;word-break:break-all}
+  .huff-bitline .c{color:#1d4ed8;font-weight:700}
+  .huff-bitline .a{color:#b45309;font-weight:700;background:#fff6e2;border-radius:3px}
+  .huff-bitline .partial{color:#64748b;background:#eef2f7;border-radius:3px;box-shadow:inset 0 0 0 1px #d3dde9}
+  .huff-bitline .bytegap{display:inline-block;width:0;height:15px;margin:0 7px;
+    vertical-align:-.16em;border-left:1px dashed #9aabc2}
+  .huff-legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin:6px 0 0;font-size:11.5px;color:var(--muted)}
+  .huff-legend span{display:inline-flex;align-items:center;gap:5px}
+  .huff-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;background:currentColor}
+  .huff-legend .lg-c{color:#1d4ed8}
+  .huff-legend .lg-a{color:#b45309}
+  .huff-legend .lg-g{color:#94a3b8}
+  .huff-legend .lg-g i{width:0;height:12px;border-left:1px dashed currentColor;border-radius:0;background:none}
+  .huff-legend .lg-note{color:#8794a8}
+  .huff-stream .note{margin-top:5px;font-size:12px}
+  /* 熵解码页：指标卡 / 对照表 / 位流分段图 / 位流片段四块同宽（1360）居中，
+     左右边缘收在一起，表格行高收到 32px 左右，不留大片空行。
+     演示台是 flex 列容器，子项带 margin:auto 时会收缩成内容宽度，
+     所以这里必须显式写 width:100%，否则四块会各自缩成一条。 */
+  .decode-stats,.decode-scroll,.decode-timeline,.decode-stream,#decodeReadout{width:100%}
+  .decode-stats{max-width:1360px;margin:0 auto}
+  .decode-scroll{max-height:clamp(240px,62vh,668px);max-width:1360px;margin:0 auto}
+  /* 紧凑模式下别把表格压到通用的 200px：这页表格就是主内容，
+     留 40vh 还能看十几行，剩下的高度够位流图与读数 */
+  .stage.compact .decode-scroll{max-height:clamp(220px,40vh,360px)}
+  .decode-table{table-layout:fixed;width:100%;max-width:1360px;margin:0 auto}
+  .decode-table th:first-child,.decode-table td.idx{width:46px;text-align:right;color:#94a3b8;font-size:11.5px}
+  .decode-table th:nth-child(2),.decode-table th:nth-child(4){width:29%}
+  .decode-table th:nth-child(3){width:14%}
+  .decode-table th:nth-child(5){width:16%;text-align:right}
+  /* 带上 table 前缀：`table.data td` 的特异度是 0,1,2，
+     只写 .decode-table td 压不住原有的 7px 单元格内边距 */
+  table.decode-table td{padding:4px 10px;line-height:1.45}
+  table.decode-table th{padding:6px 10px}
+  .decode-table td.val{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+  .decode-table td.val.warn{color:var(--red)}
+  .decode-table code{font-size:12px;letter-spacing:.04em}
+  /* 幅值位沿用 07.3 位流格的黄色标记，两页对「哪些位是数值」的视觉语言一致 */
+  .decode-table td.amp code{color:#b45309;background:#fff6e2;border-radius:3px;padding:1px 5px}
+  .decode-table .dim{color:#cbd5e1}
+  /* 本块位流的分段图：一段一个符号，宽度正比于该符号的位数 */
+  .decode-timeline{max-width:1360px;margin:10px auto 0;padding:8px 15px 9px;
+    border:1px solid var(--border-soft);border-radius:11px;background:#fbfdff}
+  .decode-timeline-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+  .decode-timeline-head b{font-size:13px;color:var(--text)}
+  .decode-timeline-head span{font-size:11.5px;color:var(--muted)}
+  .decode-timeline-track{display:flex;gap:2px;height:30px;align-items:stretch}
+  .decode-timeline-track .seg{display:flex;align-items:center;justify-content:center;
+    min-width:16px;border-radius:4px;overflow:hidden;cursor:default;
+    font:700 11px/1 Consolas,monospace;color:#fff;transition:filter var(--dur-fast) var(--ease-standard)}
+  .decode-timeline-track .seg:hover{filter:brightness(1.15)}
+  .decode-timeline-track .seg.dc{background:#1d4ed8}
+  .decode-timeline-track .seg.ac{background:#c2410c}
+  .decode-timeline-track .seg.eob{background:#475569}
+  .decode-timeline-track .seg.zrl{background:#7c3aed}
+  .decode-legend .lg-dc,.decode-legend .lg-ac,.decode-legend .lg-eob{width:12px;height:12px;border-radius:3px}
+  .decode-legend .lg-dc{background:#1d4ed8}
+  .decode-legend .lg-ac{background:#c2410c}
+  .decode-legend .lg-eob{background:#475569}
+  .decode-legend .lg-tip{color:#8794a8}
+  .decode-stream{max-width:1360px;margin:10px auto 0;padding:9px 15px 10px;border:1px solid var(--border-soft);border-radius:11px;background:#fbfdff}
+  #decodeReadout{max-width:1360px;margin:6px auto 0}
+  .decode-stream-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+  .decode-stream-head b{font-size:13px;color:var(--text)}
+  .decode-stream-head span{font-size:11.5px;color:var(--muted)}
+  /* 位流已经在这张卡片里，里面的 .bits 不再重复画一层边框与底色 */
+  .decode-stream .bits{border:0;background:transparent;padding:0;max-height:none;
+    font-size:14.5px;line-height:1.9;letter-spacing:.08em}
+  .decode-legend{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;margin:6px 0 0;
+    font-size:11.5px;color:var(--muted)}
+  .decode-legend span{display:inline-flex;align-items:center;gap:5px}
+  .decode-legend i{font-style:normal;display:inline-block}
+  .decode-legend .lg-used{width:14px;height:12px;border-radius:3px;background:#fff1d6;border:1px solid #f0dcb4}
+  .decode-legend .lg-rest{width:14px;height:12px;border-radius:3px;background:#fff;border:1px solid #e2e8f0}
+  .decode-legend .lg-cursor{color:#c2410c;font-size:14px;line-height:1;font-weight:700}
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
   .chip{background:#eef3fb;border:1px solid #dbe6f5;border-radius:999px;padding:3px 9px;font-size:11.5px;color:#334155}
   .note{font-size:12.5px;line-height:1.7;color:#52627a;margin:8px 0 0}
@@ -339,19 +498,20 @@
   .opening{display:flex;flex-direction:column;gap:14px}
   .opening-hero{display:flex;align-items:center;gap:14px 18px;flex-wrap:wrap;padding:11px 18px;border:1px solid #dbe6f7;border-radius:14px;background:linear-gradient(100deg,#eef4ff,#fbfdff)}
   .opening-hero-title{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
-  .opening-hero-title b{font-size:23px;letter-spacing:.01em;color:#12203a}
-  .opening-hero-title span{font-size:11.5px;font-weight:600;color:var(--blue);letter-spacing:.16em;background:#fff;border:1px solid #dbe6f7;border-radius:999px;padding:3px 10px}
+  .opening-hero-title b{font-size:30px;letter-spacing:.01em;color:#12203a}
+  .opening-hero-title span{font-size:13px;font-weight:600;color:var(--blue);letter-spacing:.16em;background:#fff;border:1px solid #dbe6f7;border-radius:999px;padding:4px 12px}
   /* 开篇只留两条原理的标题：编号 + 大字，两条并排，不放正文与图片 */
   .opening-rules{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-  .opening-rule{display:flex;align-items:center;gap:18px;min-width:0;padding:22px 26px;border:1px solid var(--border-soft);border-radius:14px;background:#fff;box-shadow:var(--shadow-sm)}
-  .opening-rule-no{font:700 34px/1 Consolas,monospace;color:var(--blue);letter-spacing:-.02em}
-  .opening-rule h3{margin:0;font-size:25px;line-height:1.3;letter-spacing:.01em;color:var(--text)}
+  .opening-rule{display:flex;align-items:center;gap:20px;min-width:0;padding:26px 30px;border:1px solid var(--border-soft);border-radius:14px;background:#fff;box-shadow:var(--shadow-sm)}
+  .opening-rule-no{font:700 44px/1 Consolas,monospace;color:var(--blue);letter-spacing:-.02em}
+  .opening-rule h3{margin:0;font-size:32px;line-height:1.3;letter-spacing:.01em;color:var(--text)}
   .stage.compact .opening{gap:10px}
-  .stage.compact .opening-hero{padding:8px 12px}
-  .stage.compact .opening-hero-title b{font-size:19px}
-  .stage.compact .opening-rule{padding:14px 18px}
-  .stage.compact .opening-rule-no{font-size:26px}
-  .stage.compact .opening-rule h3{font-size:20px}
+  .stage.compact .opening-hero{padding:10px 16px}
+  .stage.compact .opening-hero-title b{font-size:24px}
+  .stage.compact .opening-hero-title span{font-size:12px}
+  .stage.compact .opening-rule{padding:18px 22px}
+  .stage.compact .opening-rule-no{font-size:34px}
+  .stage.compact .opening-rule h3{font-size:26px}
   .hvs-block{border:1px solid var(--border-soft);border-radius:14px;padding:16px;margin-bottom:16px;background:#fff;box-shadow:var(--shadow-sm)}
   .hvs-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px}
   .hvs-head span{font-weight:400;color:#52627a;font-size:12px;margin-left:0}
@@ -401,13 +561,18 @@
   /* ---------- 大屏（≥1560px，含 27" 2560×1440）：演示台独占整屏，说明面板留到第二屏 ---------- */
   @media (min-width:1560px){
     /* gap 略大于演示台到达底边前剩下的 18px，保证说明面板完全落在第一屏之外 */
-    .main{gap:20px;padding:var(--main-pad-top) clamp(10px,.8vw,22px) var(--main-pad-bottom)}
-    /* 演示台铺满视口宽度，但给 4K/超宽屏留个上限：3840 原生分辨率下卡片拉到 3800 宽，
-       居中的演示内容会和卡片边框离得太远，收到 2560 后画面与卡片更贴合 */
-    .main>.right{max-width:min(100%,2560px)}
-    /* 说明面板移到演示台之后，默认落在视口下方，滚轮下滚才看到；正文限宽保证可读行宽 */
-    .main>.left{max-width:min(100%,1680px)}
+    .main{gap:20px;padding:var(--main-pad-top) clamp(10px,.8vw,22px) var(--main-pad-bottom);
+      /* 演示台铺满视口宽度，但给 4K/超宽屏留个上限：3840 原生分辨率下卡片拉到 3800 宽，
+         居中的演示内容会和卡片边框离得太远，收到 2560 后画面与卡片更贴合。
+         说明面板读同一个上限，两块卡片的左右边缘因此永远齐平。 */
+      --main-col-max:min(100%,2560px)}
     .stage{padding:24px 28px}
+    /* 说明面板的内边距跟演示台对齐，三列内容也跟着“外沿对得上” */
+    .left{padding:24px 28px;gap:0 clamp(30px,2.2vw,64px)}
+    .left h2{font-size:22px}
+    .lead{font-size:13.5px}
+    .sec p,ul.tips{font-size:13.2px}
+    .formula{font-size:12px}
     .hvs-block{padding:18px 22px;--hvs-gap:16px}
     .stage>.grid-2,.stage>.grid-3,.stage>.grid-4,.stage>.hvs-block>.grid-2{gap:16px}
     .source-layout{grid-template-columns:minmax(0,1fr) clamp(320px,18vw,460px)}
@@ -422,6 +587,16 @@
     .freq-region-row{max-width:960px}
     .freq-pane figure{max-width:420px}
     .freq-zoom-side{max-width:960px;padding:8px 12px}
+    /* Huffman 页多了「编码后的数据」一条，矮屏把标准表与这一条一起收紧，
+       换出它的高度，仍保证整页一屏装下（表图随时可以点开放大） */
+    .t81-tables img{max-height:clamp(240px,32vh,420px)}
+    /* 熵解码页的对照表也按矮屏收一档，别让整页顶出去 */
+    .decode-scroll{max-height:clamp(220px,42vh,420px)}
+    .huff-stream{padding:6px 10px 7px;margin-top:9px}
+    .huff-stream-head{font-size:11.5px;margin-bottom:3px}
+    .huff-bitline{font-size:12.5px;line-height:1.6}
+    .huff-legend{font-size:11px;margin-top:4px;gap:2px 12px}
+    .huff-stream .note{font-size:11px;line-height:1.5;margin-top:4px}
   }
 
   @media (max-width:1100px){
@@ -431,13 +606,19 @@
     /* 四联图（原块 / 重建 / 本项 / 基图索引）在中等屏排 2×2，别把每张压成邮票 */
     .dct-rebuild-row4{grid-template-columns:repeat(2,minmax(0,1fr))}
   }
+  /* 中等宽度放不下「四宫格 + QF 拉杆」并排：拉杆改到四宫格下方 */
+  @media (max-width:1180px){
+    .quant-layout{flex-direction:column;align-items:center;gap:16px}
+    .quant-qf{flex:0 0 auto;width:100%;max-width:420px}
+  }
   @media (max-width:900px){
     .source-layout{grid-template-columns:minmax(0,1fr);gap:14px}
     .cards{grid-template-columns:1fr 1fr}
     /* 窄屏放不下并排，两条原理改回上下堆叠 */
     .opening-rules{grid-template-columns:1fr}
-    .opening-rule{gap:16px;padding:16px 18px}
-    .opening-rule h3{font-size:20px}
+    .opening-rule{gap:16px;padding:18px 20px}
+    .opening-rule-no{font-size:36px}
+    .opening-rule h3{font-size:24px}
   }
   @media (max-width:700px){
     .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
