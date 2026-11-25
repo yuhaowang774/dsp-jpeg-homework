@@ -287,6 +287,15 @@
   table.data th{text-align:left;color:var(--muted);font-weight:700;background:var(--surface-soft);border-bottom:1px solid var(--line);padding:7px 8px;white-space:nowrap}
   table.data td{padding:7px 8px;border-bottom:1px solid var(--border-soft);font-variant-numeric:tabular-nums}
   table.data code{font-family:Consolas,monospace;color:#1e3a8a}
+  /* Huffman 表页：直接展示 T.81 标准原文截图（Table K.3 / K.5） */
+  /* K.3 全表 + K.5 上下两半固定三列，图片尽量放大 */
+  .t81-tables{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;margin-top:8px}
+  .t81-tables figure{margin:0;display:flex;flex-direction:column;align-items:center;background:#fff;
+    border:1px solid var(--border-soft);border-radius:11px;padding:10px}
+  /* 表图放在页面上方，尽量放大占满可用高度；需要更细再看“原版整页” */
+  .t81-tables img{display:block;max-width:100%;max-height:480px;object-fit:contain;background:#fff}
+  .t81-tables figcaption{font-size:11px;color:var(--muted);margin-top:7px;text-align:center;line-height:1.45}
+  @media (max-width:1100px){.t81-tables{grid-template-columns:1fr}}
   .scroll{max-height:330px;overflow:auto;border:1px solid var(--border-soft);border-radius:11px}
   /* 分步标号 ①②③：让「位流 / 码树 / 码字清单」三层的阅读顺序一眼可见 */
   .step-mark{color:var(--blue);font-weight:700;margin-right:4px}
@@ -318,11 +327,6 @@
   .huff-code b{font-size:11px;color:#334155}
   .huff-code i{font-family:Consolas,monospace;font-style:normal;font-size:11.5px;font-weight:700;color:#1d4ed8}
   .huff-code em{font-style:normal;font-size:10px;color:#94a3b8}
-  .huff-run{display:flex;flex-wrap:wrap;gap:4px 22px;margin-top:10px;padding-top:8px;
-    border-top:1px dashed #e2e8f0;font-size:11.5px;color:#475569}
-  .huff-run b{color:#64748b;font-weight:600;margin-right:4px}
-  #huffBytes{font-family:Consolas,monospace;color:#1d4ed8;font-weight:700}
-  .huff-tree-figure{margin:0}
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
   .chip{background:#eef3fb;border:1px solid #dbe6f5;border-radius:999px;padding:3px 9px;font-size:11.5px;color:#334155}
   .note{font-size:12.5px;line-height:1.7;color:#52627a;margin:8px 0 0}

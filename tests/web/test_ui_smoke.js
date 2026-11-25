@@ -221,7 +221,8 @@ const expectedByStepId = {
   quant: ['quantTable', 'quantCoeff', 'quantError'],
   zigzag: ['zigMain', 'zigSeq'],
   rle: ['rleStrip', 'rleAnatomy'],
-  huffman: ['huffTree', 'huffBits', 'huffBytes', 'huffCurrent'],
+  huffTable: ['t81DcTable', 't81AcTable', 't81AcTable2'],
+  huffman: ['huffBits', 't81DcTable', 't81AcTable', 't81AcTable2'],
   bitstream: ['bitBars', 'bitHist', 'bitAssembly'],
   decEntropy: ['decodeWrap', 'decodeBitStrip'],
   dequant: ['dqOriginal', 'dqQuantized', 'dqTable', 'dqRestored'],
@@ -462,6 +463,21 @@ test('游程编码页：前 4 个典型符号的解剖卡', function () {
   play.fire('click');
   pump(3);
   assert.ok(store.rleReadout.textContent.indexOf('个符号') >= 0, '读数未跟随扫描进度');
+});
+
+test('Huffman 页合并展示位流与 T.81 标准表，独立的 Huffman 表节点已移除', function () {
+  assert.strictEqual(flowEntries.some(function (entry) { return page.STEPS[entry.step].id === 'huffTable'; }), false,
+    '教学流不应再有独立的 Huffman 表节点');
+  const huffIndex = findFlowIndex(function (entry) { return page.STEPS[entry.step].id === 'huffman'; });
+  goTo(huffIndex);
+  const html = store.stage.innerHTML;
+  assert.ok(html.indexOf('huffBits') >= 0, '合并页缺少位流');
+  assert.ok(html.indexOf('t81DcTable') >= 0, '合并页缺少 DC 标准表');
+  assert.ok(html.indexOf('t81AcTable') >= 0, '合并页缺少 AC 标准表上半');
+  assert.ok(html.indexOf('t81AcTable2') >= 0, '合并页缺少 AC 标准表下半');
+  assert.ok(html.indexOf('码字从哪里查') < 0, '表标题已删除，不应再渲染');
+  assert.ok(html.indexOf('本块位流 · 一格') < 0, '位流标题已删除，不应再渲染');
+  assert.ok(html.indexOf('huff-saving') < 0, '收益读数已删除，不应再渲染');
 });
 
 test('默认 4:2:0 下色度局部对比与读数完整', function () {

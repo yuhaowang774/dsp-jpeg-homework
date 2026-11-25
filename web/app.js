@@ -1018,14 +1018,15 @@
       }
     },
     {
-      id: 'huffman', short: 'Huffman', tag: '编码 08',
+      id: 'huffman', short: 'Huffman', tag: '编码 09',
       title: '规范 Huffman 编码',
-      lead: '常见的符号配短码，罕见的配长码。一个系数最终写出的是「Huffman 码 + 幅值位」两段拼起来的比特。',
-      principle: '<p><b>码字是怎么来的。</b>JPEG 不在文件里存整棵码树，只存「长度为 1 的有几个、长度为 2 的有几个……」。解码端按「码长递增、同长度按符号值递增」的规则，能从这张码长表唯一地重建出同一棵树，所以码字完全对得上。DC 与 AC 各一张表，本页用 T.81 附录 K 的亮度表。</p>' +
+      lead: '常见的符号配短码，罕见的配长码；码长表由 JPEG 标准给定，不为当前图像重新统计。一个系数最终写出的是「Huffman 码 + 幅值位」两段拼起来的比特。',
+      principle: '<p><b>和教科书 Huffman 的关键区别：不现场统计。</b>传统 Huffman 先统计这张图的符号频率，再反复合并建树，还得把树写进码流。JPEG 不这么做：它用 T.81 附录 K 给定的<b>码长表</b>——「长度为 1 的有几个、长度为 2 的有几个……」。这张表是标准制定时按大量自然图像统计出来的，任何图像、任何块都用同一张，所以编码前不需要统计当前图像，也不用传树。</p>' +
+        '<p><b>码字怎么定。</b>解码端按「码长递增、同长按符号值递增」的规则，从码长表唯一地重建出同一棵树，因此编解码的码字完全一致。DC 与 AC 各一张表，本页用亮度表。演示台最上方并排贴出 T.81 附录 K 的 Table K.3 / K.5 原文截图，位流里的每个码字都能对照查到。页面上方「几个唯一码字 / 多少个符号」只是展示本块用了多少种符号、省了多少位，<b>不参与码字生成</b>。</p>' +
         '<p><b>一个符号写出多少位。</b>Huffman 码只编码「这是什么符号」；这个数具体多大，还要再看幅值位。比如 −5 记作 (0,3)，码字是 ' + bitChip('100') + '（3 位），幅值位是 ' + bitChip('010', 'amp') + '（3 位），写进流里就是 ' + bitChip('100010') + ' 共 6 位。所以块位数 = Σ码字长度 + Σ幅值位数。</p>' +
-        '<p><b>位流那一条怎么读。</b>每一段下划线就是一个符号：前段是 Huffman 码，后段（浅黄底）是幅值位。段越短，说明这个符号越常见——这正是 Huffman 压缩的全部来源。</p>',
-      formula: '每个符号 → 码字 + 幅值位\nw = codeLen(symbol) + ampLen(value)\n块位数 = Σ w\n码字分配：码长递增，同长按符号值递增',
-      tips: ['码表只在文件头写「每种长度几个」，不传整棵树', '码字与幅值位是两段，拼起来才是完整信息', '位流里每段下划线 = 一个符号，前蓝后黄', '常用符号码字短，这就是变长编码省下的地方'],
+        '<p><b>位流那一条怎么读。</b>每一段就是一个符号：前段是 Huffman 码，后段（浅黄底）是幅值位。段越短，说明这类符号在标准表的统计里越常见——这正是变长编码压缩的来源。</p>',
+      formula: '码长表：T.81 标准给定（不按当前图像统计）\n每个符号 → 码字 + 幅值位\nw = codeLen(symbol) + ampLen(value)\n块位数 = Σ w\n码字分配：码长递增，同长按符号值递增',
+      tips: ['码长表来自 T.81 标准，不是从当前图像统计出来的', '文件头只写「每种长度几个」，不传整棵树', '码字与幅值位是两段，拼起来才是完整信息', '位流里每格 = 一个符号，前蓝后黄', '常用符号码字短，这就是变长编码省下的地方'],
       params: function () {
         const block = encodedBlock();
         let average = 0;
@@ -1043,7 +1044,7 @@
       }
     },
     {
-      id: 'bitstream', short: '位流', tag: '编码 09',
+      id: 'bitstream', short: '位流', tag: '编码 10',
       title: '熵编码输出',
       lead: '每块写完就是一段比特，按 MCU 顺序首尾相接，拼成文件里真正的熵编码数据。',
       principle: '<p><b>三级量级，从下往上数。</b>一个 8×8 块约几百 bit；一个 MCU（4:2:0 下含 4 个 Y 块 + 1 个 Cb + 1 个 Cr）是几十到几千 bit；整幅图就是全部 MCU 的累加。</p>' +
@@ -1217,7 +1218,7 @@
         return '<button class="primary" data-action="goto" data-target="luma">下一节：亮度 / 颜色感知</button>' +
           '<button data-action="goto" data-target="freq">跳到 02 低 / 高频</button>';
       }
-    }
+    },
   ];
 
   const FLOW_OVERRIDES = {
@@ -3874,8 +3875,8 @@
     /* 本页只用双轨图讲「一个符号管哪几个系数」，符号明细表留给后面的 Huffman 页 */
     state.rleStep = 0;
     stage.innerHTML = '<figure>' +
-      canvasTag('rleStrip', '上排是 64 个 Zigzag 系数，下排每个格子是一个符号（符号 / 数值），橙色连线表示当前符号负责哪几个系数') +
-      '<figcaption>上排：64 个 Zigzag 系数（左 = 低频，右 = 高频，浅灰 = 0）　下排：一格 = 一个符号，格内从上到下是「符号 / 该符号的数值」，橙色连线 = 当前符号管着哪几个系数</figcaption></figure>' +
+      canvasTag('rleStrip', '上排是 64 个 Zigzag 系数，下排每个格子是一个符号：AC 写作 (run, size)，run 是前面跳过的零个数，size 是幅值位数；第二行是该符号的数值。橙色连线表示当前符号负责哪几个系数') +
+      '<figcaption>上排：64 个 Zigzag 系数（左 = 低频，右 = 高频，浅灰 = 0）　下排：一格 = 一个符号，上行为符号——AC 写作 <b>(run, size)</b>，run = 前面跳过几个 0、size = 幅值占几位；下行为它的数值，橙色连线 = 当前符号管着哪几个系数</figcaption></figure>' +
       '<div class="rle-anatomy" id="rleAnatomy">' + rleAnatomyHTML(block) + '</div>' +
       '<p class="note" id="rleReadout"></p>';
     drawRleStrip(setupCanvas('rleStrip', RLE_STRIP_WIDTH, RLE_STRIP_HEIGHT), block, -1);
@@ -3985,7 +3986,7 @@
     context.textBaseline = 'alphabetic';
     context.fillText('上排 · 64 个 Zigzag 系数（#1 = 低频 … #64 = 高频，浅灰 = 0）', 0, 15);
     context.textAlign = 'right';
-    context.fillText('下排 · 一格 = 一个符号（符号 / 数值）', width, 15);
+    context.fillText('下排 · AC = (run, size)：run = 跳过几个 0，size = 幅值位数', width, 15);
 
     for (let i = 0; i < 64; i++) {
       const value = block.scan[i];
@@ -4079,13 +4080,7 @@
         unique.push(symbol);
       }
     });
-    /* 版面按「先看答案、再看依据、最后看细节」排：
-       ① 位流（最终比特，每格一个符号）② 码树（码字从哪来）③ 唯一码字清单 + 统计 */
-    /* 变长编码的收益直接写在位流上方：只比「码字部分」，幅值位两边都要写，不参与对比 */
-    let codeBits = 0;
-    block.symbols.forEach(function (symbol) { codeBits += symbol.code.length; });
-    const fixedBits = block.symbols.length * 8;
-    const saving = Math.max(0, Math.round(100 * (fixedBits - codeBits) / fixedBits));
+    /* 版面：标准表在上，位流与码字清单在下；标题与收益读数已按演示需要移除 */
     const chips = unique.map(function (symbol) {
       const value = symbol.kind === 'AC' || symbol.kind === 'DC' ? symbol.value : '—';
       return '<span class="huff-code" title="值 ' + value + '，码字 ' + symbol.code +
@@ -4094,235 +4089,31 @@
         '<i>' + symbol.code + '</i>' +
         '<em>' + (symbol.code.length + symbol.amplitude.length) + 'b</em></span>';
     }).join('');
-    stage.innerHTML =
-      '<p class="subcap"><b class="step-mark">①</b> 本块位流 · 一格 = 一个符号（上方符号名，蓝 = Huffman 码，黄 = 幅值位）' +
-      '<span class="huff-saving">码字部分 <b>' + codeBits + ' bit</b>，定长 8 bit/符号需 ' + fixedBits +
-      ' bit，<b>省 ' + saving + '%</b></span></p>' +
+    stage.innerHTML = huffmanTableHTML() +
       '<div class="bits bitstream" id="huffBits">' + bitGroupsHTML(block) + '</div>' +
-      '<figure class="huff-tree-figure" style="margin-top:10px">' +
-      '<canvas id="huffTree" role="img" aria-label="规范 Huffman 码树：由码长表唯一生成，橙色为本块实际用到的码字"></canvas>' +
-      '<figcaption><b class="step-mark">②</b> 规范 Huffman 码树：从根往叶读出的 0/1 就是码字，橙 = 本块用到的；' +
-      '码长表只存「每种长度几个」，解码端按同一规则就能重建这棵树。</figcaption></figure>' +
       '<div class="huff-codes">' +
-      '<span class="huff-stat"><b class="step-mark">③</b> ' + unique.length + ' 个唯一码字 · ' +
+      '<span class="huff-stat">' + unique.length + ' 个唯一码字 · ' +
       block.symbols.length + ' 个符号 · ' + block.bits.length + ' bit · 平均 ' +
       (block.bits.length / block.symbols.length).toFixed(2) + ' bit/符号</span>' +
       chips + '</div>' +
-      '<div class="huff-run">' +
-      '<span class="huff-run-item"><b>正在写</b> <span id="huffCurrent">点「逐符号写入位流」开始</span></span>' +
-      '<span class="huff-run-item"><b>已完成字节</b> <span id="huffBytes">（凑满 8 bit 出现第一个字节）</span></span>' +
-      '</div>' +
       '<p class="note" id="huffReadout"></p>';
-    /* 树占满整宽后，14 个叶标签才有足够间距（上下两棵各占一半高度） */
-    drawHuffmanTree(setupCanvas('huffTree', 1000, 500), block);
   }
 
-  const AC_TREE_CODES = 14;
-  const acCountCache = new WeakMap();
+  /* 07.3 Huffman 表页：先看 BITS 分布（每个码长几个码字），再看 DC/AC 码字清单 */
 
-  function acSymbolCounts(encoded) {
-    let counts = acCountCache.get(encoded);
-    if (counts) return counts;
-    counts = new Map();
-    encoded.mcus.forEach(function (mcu) {
-      mcu.blocks.forEach(function (block) {
-        block.symbols.forEach(function (symbol) {
-          let value = -1;
-          if (symbol.kind === 'AC') value = symbol.run * 16 + symbol.size;
-          else if (symbol.kind === 'EOB') value = 0x00;
-          else if (symbol.kind === 'ZRL') value = 0xF0;
-          if (value < 0) return;
-          counts.set(value, (counts.get(value) || 0) + 1);
-        });
-      });
-    });
-    acCountCache.set(encoded, counts);
-    return counts;
+  /* 原 07.3 的标准原文表，放在 Huffman 页最上方：K.3 全表 + K.5 上下两半，固定三列 */
+  function huffmanTableHTML() {
+    return '<div class="t81-tables">' +
+      '<figure id="t81DcTable"><img src="assets/t81_table_k3_dc.png" alt="ITU-T T.81 Table K.3 亮度 DC Huffman 表">' +
+      '<figcaption>Table K.3（Category 0–11）：Category 就是 DC 差值的 size。本块 DC(3) 对应 3，码字 <code>100</code>。</figcaption></figure>' +
+      '<figure id="t81AcTable"><img src="assets/t81_k5_top.png" alt="ITU-T T.81 Table K.5 亮度 AC Huffman 表上半 0/0–1/7">' +
+      '<figcaption>Table K.5 上半：0/0（EOB）… 1/7。Run/Size 就是游程编码得到的符号。' +
+      '原版整页 <a href="assets/t81_table_k5_ac.png" target="_blank" rel="noopener">点这里看</a>。</figcaption></figure>' +
+      '<figure id="t81AcTable2"><img src="assets/t81_k5_bottom.png" alt="ITU-T T.81 Table K.5 亮度 AC Huffman 表下半 1/8–3/A">' +
+      '<figcaption>Table K.5 下半：1/8 … 3/A，接上图继续。</figcaption></figure>' +
+      '</div>';
   }
 
-  function huffmanLabel(kind, value) {
-    if (kind === 'DC') return 'DC(' + value + ')';
-    if (value === 0x00) return 'EOB';
-    if (value === 0xF0) return 'ZRL';
-    return '(' + Math.floor(value / 16) + ',' + (value % 16) + ')';
-  }
-
-  function huffmanEntries(kind, block) {
-    const table = kind === 'DC' ? Codec.DC_TABLE : Codec.AC_TABLE;
-    const used = new Set();
-    block.symbols.forEach(function (symbol) {
-      if (symbol.kind === 'DC') {
-        if (kind === 'DC') used.add(symbol.size);
-      } else if (symbol.kind === 'AC') {
-        if (kind === 'AC') used.add(symbol.run * 16 + symbol.size);
-      } else if (symbol.kind === 'EOB') {
-        if (kind === 'AC') used.add(0x00);
-      } else if (symbol.kind === 'ZRL') {
-        if (kind === 'AC') used.add(0xF0);
-      }
-    });
-    const values = [];
-    if (kind === 'DC') {
-      table.encode.forEach(function (entry, value) { values.push(value); });
-    } else {
-      used.forEach(function (value) { values.push(value); });
-      const counts = acSymbolCounts(state.encoded);
-      const ranked = Array.from(counts.keys()).sort(function (a, b) {
-        return (counts.get(b) - counts.get(a)) || (b - a);
-      });
-      ranked.forEach(function (value) {
-        if (values.length >= AC_TREE_CODES) return;
-        if (values.indexOf(value) < 0) values.push(value);
-      });
-    }
-    return values.filter(function (value) { return table.encode.has(value); }).map(function (value) {
-      const entry = table.encode.get(value);
-      return { code: entry.code, label: huffmanLabel(kind, value), used: used.has(value) };
-    });
-  }
-
-  function drawCodeTreePanel(context, rect, entries, options) {
-    const root = { children: [null, null], code: '', depth: 0, label: '', used: false, hasUsed: false };
-    entries.forEach(function (entry) {
-      let node = root;
-      for (let index = 0; index < entry.code.length; index++) {
-        const bit = entry.code.charAt(index) === '1' ? 1 : 0;
-        if (!node.children[bit]) {
-          node.children[bit] = {
-            children: [null, null], code: node.code + entry.code.charAt(index),
-            depth: node.depth + 1, label: '', used: false, hasUsed: false
-          };
-        }
-        node = node.children[bit];
-      }
-      node.label = entry.label;
-      node.used = entry.used === true;
-    });
-    function markUsed(node) {
-      const zero = node.children[0] ? markUsed(node.children[0]) : false;
-      const one = node.children[1] ? markUsed(node.children[1]) : false;
-      node.hasUsed = node.used || zero || one;
-      return node.hasUsed;
-    }
-    markUsed(root);
-
-    let leaves = 0;
-    let maxDepth = 0;
-    function place(node) {
-      maxDepth = Math.max(maxDepth, node.depth);
-      const kids = [];
-      if (node.children[0]) kids.push(node.children[0]);
-      if (node.children[1]) kids.push(node.children[1]);
-      if (!kids.length) {
-        node.slot = leaves;
-        leaves += 1;
-        return node.slot;
-      }
-      let first = 0;
-      let last = 0;
-      kids.forEach(function (kid, index) {
-        const slot = place(kid);
-        if (index === 0) first = slot;
-        last = slot;
-      });
-      node.slot = (first + last) / 2;
-      return node.slot;
-    }
-    place(root);
-
-    const top = rect.y + 50;
-    const bottom = rect.y + rect.h - 28;
-    const rowHeight = maxDepth > 0 ? (bottom - top) / maxDepth : 0;
-    const slotWidth = Math.min(50, (rect.w - 26) / Math.max(1, leaves - 1));
-    const originX = rect.x + rect.w / 2 - (leaves - 1) * slotWidth / 2;
-    const xOf = function (node) { return originX + node.slot * slotWidth; };
-    const yOf = function (node) { return top + node.depth * rowHeight; };
-
-    context.textAlign = 'left';
-    context.textBaseline = 'alphabetic';
-    context.fillStyle = '#334155';
-    context.font = '600 12px "Segoe UI", "Microsoft YaHei", system-ui, sans-serif';
-    context.fillText(options.title, rect.x + 4, rect.y + 20);
-    context.fillStyle = '#64748b';
-    context.font = '11px "Segoe UI", "Microsoft YaHei", system-ui, sans-serif';
-    context.fillText(options.note, rect.x + 4, rect.y + 36);
-
-    function drawEdges(node) {
-      [0, 1].forEach(function (bit) {
-        const kid = node.children[bit];
-        if (!kid) return;
-        const x1 = xOf(node);
-        const y1 = yOf(node);
-        const x2 = xOf(kid);
-        const y2 = yOf(kid);
-        context.beginPath();
-        context.moveTo(x1, y1);
-        context.lineTo(x2, y2);
-        context.strokeStyle = kid.hasUsed ? '#ea580c' : '#c9d6e6';
-        context.lineWidth = kid.hasUsed ? 2.1 : 1.2;
-        context.stroke();
-        if (y2 - y1 >= 15) {
-          context.fillStyle = kid.hasUsed ? '#ea580c' : '#94a3b8';
-          context.font = '9px Consolas, monospace';
-          context.textAlign = 'center';
-          context.textBaseline = 'middle';
-          context.fillText(String(bit), (x1 + x2) / 2 + (bit === 1 ? 5 : -5), (y1 + y2) / 2);
-        }
-        drawEdges(kid);
-      });
-    }
-    drawEdges(root);
-
-    function drawNodes(node) {
-      const x = xOf(node);
-      const y = yOf(node);
-      context.beginPath();
-      if (node.label) {
-        context.arc(x, y, 3, 0, Math.PI * 2);
-        context.fillStyle = node.used ? '#c2410c' : '#94a3b8';
-        context.fill();
-        context.font = (node.used ? '700 ' : '') + '11px "Segoe UI", "Microsoft YaHei", system-ui, sans-serif';
-        context.fillStyle = node.used ? '#c2410c' : '#1e293b';
-        context.textAlign = 'center';
-        context.textBaseline = 'top';
-        context.fillText(node.label, x, y + 7);
-      } else {
-        context.arc(x, y, 2.4, 0, Math.PI * 2);
-        context.fillStyle = node.hasUsed ? '#fff7ed' : '#ffffff';
-        context.strokeStyle = node.hasUsed ? '#fb923c' : '#c9d6e6';
-        context.lineWidth = node.hasUsed ? 1.6 : 1;
-        context.fill();
-        context.stroke();
-      }
-      [0, 1].forEach(function (bit) { if (node.children[bit]) drawNodes(node.children[bit]); });
-    }
-    drawNodes(root);
-  }
-
-  /* 两棵树上下排、各占整宽：左右并排时每棵只有 ~390 逻辑像素、14 个叶挤在一起，
-     叶标签必然叠字；上下排后叶间距翻倍，DC/AC 的标签都能各自读清。 */
-  function drawHuffmanTree(target, block) {
-    if (!target) return;
-    const context = target.ctx;
-    context.clearRect(0, 0, target.w, target.h);
-    const margin = 6;
-    const gap = 14;
-    const panelHeight = (target.h - margin * 2 - gap) / 2;
-    const dcEntries = huffmanEntries('DC', block);
-    const acEntries = huffmanEntries('AC', block);
-    const dcUsed = dcEntries.filter(function (entry) { return entry.used; }).length;
-    const acUsed = acEntries.filter(function (entry) { return entry.used; }).length;
-    drawCodeTreePanel(context, { x: margin, y: margin, w: target.w - margin * 2, h: panelHeight }, dcEntries, {
-      title: 'DC 亮度表 · ' + dcEntries.length + ' 个码字全展开',
-      note: '橙 = 本块用到的 ' + dcUsed + ' 个 DC 码字，灰 = 表中其余码字'
-    });
-    drawCodeTreePanel(context, {
-      x: margin, y: margin + panelHeight + gap, w: target.w - margin * 2, h: panelHeight
-    }, acEntries, {
-      title: 'AC 亮度表 · 展开 ' + acEntries.length + ' 个码字',
-      note: '橙 = 本块用到的 ' + acUsed + ' 个码字，灰 = 表中共 162 个中的高频部分'
-    });
-  }
 
   function renderBitstreamStep() {
     const stats = state.encoded.stats;
@@ -6400,43 +6191,10 @@
     state.bitWriteStep = 0;
     const box = document.getElementById('huffBits');
     const readout = document.getElementById('huffReadout');
-    const currentBox = document.getElementById('huffCurrent');
-    const byteBox = document.getElementById('huffBytes');
     function paint() {
       if (box) {
         box.innerHTML = bitGroupsHTML(block, state.bitWriteStep) +
           (state.bitWriteStep < bits.length ? '<span class="zero"> …</span>' : '');
-      }
-      let cumulative = 0;
-      let current = null;
-      let currentStart = 0;
-      for (let i = 0; i < block.symbols.length; i++) {
-        const symbol = block.symbols[i];
-        const length = symbol.code.length + symbol.amplitude.length;
-        if (state.bitWriteStep <= cumulative + length) {
-          current = symbol;
-          currentStart = cumulative;
-          break;
-        }
-        cumulative += length;
-      }
-      if (currentBox) {
-        if (current) {
-          currentBox.innerHTML = '<b>' + symbolLabel(current) + '</b> 值 ' +
-            (current.kind === 'AC' || current.kind === 'DC' ? current.value : '—') +
-            '<br>码字 ' + bitChip(current.code) + ' + 幅值 ' + bitChip(current.amplitude, 'amp') +
-            '<br>第 ' + (currentStart + 1) + '–' + (currentStart + current.code.length + current.amplitude.length) +
-            ' 位（共 ' + (current.code.length + current.amplitude.length) + ' 位）';
-        } else {
-          currentBox.textContent = '本块位流写入完成。';
-        }
-      }
-      if (byteBox) {
-        const bytes = [];
-        for (let i = 0; i + 8 <= state.bitWriteStep; i += 8) {
-          bytes.push(parseInt(bits.slice(i, i + 8), 2).toString(16).padStart(2, '0').toUpperCase());
-        }
-        byteBox.textContent = bytes.length ? bytes.join(' ') : '（等待凑满 8 bit）';
       }
       if (readout) {
         readout.textContent = '已写入 ' + state.bitWriteStep + ' / ' + bits.length + ' bit（' +
