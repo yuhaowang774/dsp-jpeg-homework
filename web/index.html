@@ -32,6 +32,10 @@
     --ease-standard:cubic-bezier(.22,.61,.36,1);
     --ease-emphasis:cubic-bezier(.34,1.2,.64,1);
     --dur-fast:160ms; --dur-base:260ms; --dur-slow:380ms;
+    /* 量化页四宫格：图块边长与宫格总宽联动，宫格在首屏里铺开；
+       算式区不在演示台内，而是挂在下方说明面板里，滚动才看见。 */
+    --quant-tile:clamp(210px,36vh,400px);
+    --quant-grid-w:calc(var(--quant-tile) * 2 + 124px);
   }
   *{box-sizing:border-box}
   /* 屏幕阅读器专用文本与跳转链接：可视区域不变，只为键盘/读屏用户提供入口 */
@@ -46,7 +50,8 @@
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 "Microsoft YaHei","Segoe UI",system-ui,sans-serif}
   .app{position:relative;width:100%;height:100vh;margin:0;padding:0;overflow:hidden}
-  .stepper{position:fixed;left:50%;transform:translateX(-50%);bottom:10px;z-index:28;display:flex;gap:6px;overflow-x:auto;padding:7px;width:min(96vw,2460px);background:rgba(255,255,255,.97);border:1px solid var(--line);border-radius:14px;scrollbar-width:thin;backdrop-filter:blur(8px);box-shadow:var(--shadow-md)}
+  /* 宽度与 .main>.right / .main>.left 的内容列一致（min(94vw,1380px)），左右边缘与演示台卡片对齐 */
+  .stepper{position:fixed;left:50%;transform:translateX(-50%);bottom:10px;z-index:28;display:flex;gap:6px;overflow-x:auto;padding:7px;width:min(94vw,1380px);max-width:calc(100vw - 24px);background:rgba(255,255,255,.97);border:1px solid var(--line);border-radius:14px;scrollbar-width:none;backdrop-filter:blur(8px);box-shadow:var(--shadow-md)}
   .stepper button{border:1px solid transparent;background:transparent;border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;white-space:nowrap;color:var(--muted)}
   .stepper button:hover{background:var(--surface-soft);border-color:var(--border-soft);color:var(--text)}
   .stepper button .n{font-family:Consolas,monospace;font-weight:700;margin-right:4px;color:#94a3b8}
@@ -111,6 +116,8 @@
   @media (min-width:1100px){
     .stage .stats{grid-template-columns:repeat(4,minmax(0,1fr))}
     .stage .cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+    /* 说明面板里的算例统计卡同样铺成一行，省得占两行高度 */
+    .panel-quant .stats{grid-template-columns:repeat(4,minmax(0,1fr))}
   }
   table.data tr.done{color:#8190a6}
   table.data tbody tr:nth-child(even) td{background:#fafcff}
@@ -118,17 +125,19 @@
   .stage-flex{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
   .stage-col{flex:1;min-width:0}
   .stage-col.hug{flex:0 1 auto}
-  .dct-2d-top{display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:18px;align-items:start}
+  /* 系数页两列等高：左矩阵、右 64 张基图，读数与统计卡已移除；
+     列宽跟着图走并整体居中，两张方图之间不再隔着一大片空白 */
+  .dct-2d-top{display:grid;grid-template-columns:repeat(2,auto);justify-content:center;column-gap:26px;align-items:start}
   .dct-2d-col{display:flex;flex-direction:column;gap:10px;min-width:0;align-items:center}
   .dct-2d-col figure{display:flex;flex-direction:column;align-items:center;width:100%}
   .dct-2d-col figcaption{align-self:flex-start}
-  .dct-2d-col .note{margin:0;line-height:1.65;align-self:stretch}
-  .dct-2d-col .stats{width:100%}
   .dct-shift-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-bottom:16px}
-  .dct-rebuild-row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start;margin-bottom:14px}
-  .dct-rebuild-row3 figure{display:flex;flex-direction:column;align-items:center}
-  .dct-rebuild-row3 canvas{max-width:340px;margin:0 auto}
-  .dct-rebuild-row3 figcaption{text-align:left;line-height:1.45}
+  .dct-rebuild-row4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:start;margin-bottom:14px}
+  .dct-rebuild-row4 figure{display:flex;flex-direction:column;align-items:center}
+  .dct-rebuild-row4 canvas{max-width:340px;margin:0 auto}
+  .dct-rebuild-row4 figcaption{text-align:left;line-height:1.45}
+  /* 基图索引可点：点哪一张就跳到它刚被加入的那一步 */
+  .dct-rebuild-row4 #rebuildBasisIndex{cursor:pointer}
   .dct-1d-figure{display:flex;flex-direction:column;align-items:center}
   .dct-1d-figure figcaption{align-self:flex-start}
   .dct-use-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
@@ -141,15 +150,42 @@
   .dct-row-picker>.note{margin-left:4px}
   .dct-row-picker button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 9px;font-size:11.5px;color:var(--muted);cursor:pointer}
   .dct-row-picker button.on{background:var(--blue-soft);border-color:#9db8f5;color:var(--blue)}
-  .dct-pixel-strip{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;max-width:520px;margin-bottom:8px}
-  .dct-pixel-strip span{display:flex;align-items:center;justify-content:center;aspect-ratio:1/1;border-radius:4px;font:700 12px/1 Consolas,monospace;box-shadow:inset 0 0 0 1px rgba(15,23,42,.08)}
-  .dct-pixel-strip-caption{margin:0 0 12px;color:var(--muted);font-size:11.5px}
-  /* 一维页顶部：左边原始像素、右边 DCT 后的系数，一对一并排 */
-  .dct-strips{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start;margin-bottom:12px}
-  .dct-strip-col{min-width:0}
-  .dct-strip-col figure{display:flex;flex-direction:column;align-items:center}
-  .dct-strip-col figcaption{text-align:center;line-height:1.5}
+  /* 一维页顶部只是索引区：空间域像素与频率域系数各压成一条单行卡片，
+     高度让给下面的逐步逼近大图（图注/读数都在卡片与控制条里，不另占行） */
+  .dct-strips{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:stretch;max-width:1040px;margin-bottom:6px}
+  .dct-strip-col{min-width:0;display:flex;align-items:center;gap:10px;padding:4px 9px;border:1px solid #e3eaf4;border-radius:10px;background:#fff}
+  .dct-strip-head{flex:0 0 104px;display:flex;flex-direction:column;gap:1px;margin:0;font:600 10.5px/1.35 "Microsoft YaHei",sans-serif;color:#475569}
+  .dct-strip-head em{font:400 9.5px/1.35 "Microsoft YaHei",sans-serif;font-style:normal;color:#94a3b8;white-space:nowrap}
+  .dct-cells{flex:1 1 auto;display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px}
+  .dct-cells span{display:flex;align-items:center;justify-content:center;min-width:0;aspect-ratio:1/1;border-radius:5px;font:600 11px/1 Consolas,monospace;box-shadow:inset 0 0 0 1px rgba(15,23,42,.06)}
+  .dct-cells span.pending{background:#fbfdff;border:1px dashed #c2cfdd;box-shadow:none;color:#9aa8bb;font-weight:400}
+  .dct-1d-top{margin-bottom:4px}
+  .dct-1d-top .dct-row-picker{margin-bottom:6px}
+  .dct-1d-top .dct-row-picker button{padding:2px 7px;font-size:10.5px}
+  .dct-1d-top .dct-use-row{margin-bottom:0}
+  /* DCT ② 基函数页的公式条：等宽字体，与画布上的 k 标注呼应 */
+  .dct-cosine-formula{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;justify-content:center;
+    margin-top:10px;padding:10px 14px;background:var(--surface-soft);border:1px solid var(--border-soft);border-radius:10px}
+  .dct-cosine-formula code{font-family:Consolas,"Cascadia Mono",monospace;font-size:13px;color:#1e3a8a;font-weight:700}
+  .dct-cosine-formula span{font-size:11.5px;color:var(--muted)}
   @media (max-width:900px){.dct-strips{grid-template-columns:1fr}}
+  /* 行列两遍页：底部“当前这一行/列”宽图与上方三张矩阵同宽，图注与读数已移除 */
+  .dct-pass-row{margin-top:10px}
+  .dct-pass-row canvas{max-width:100%;margin:0 auto}
+  /* 游程编码页：前 4 个典型符号的解剖卡 */
+  .rle-anatomy{margin-top:12px}
+  .rle-anatomy .subcap{margin-bottom:6px}
+  .rle-anatomy-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  .rle-anatomy-card{min-width:0;padding:8px 11px;border:1px solid var(--border-soft);border-radius:10px;background:#fbfdff}
+  .rle-anatomy-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:4px}
+  .rle-anatomy-head b{font:700 14px/1.1 Consolas,monospace;color:#1d4ed8}
+  .rle-anatomy-head em{font-style:normal;font-size:10.5px;color:#94a3b8}
+  .rle-anatomy-card p{margin:0;font-size:12px;line-height:1.5;color:#52627a}
+  .rle-anatomy-bits{margin-top:3px!important}
+  .rle-anatomy-bits b{font-family:Consolas,monospace;color:#b45309;background:#fff3d6;border-radius:4px;padding:0 4px}
+  @media (max-width:900px){
+    .rle-anatomy-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
   .dct-term-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:16px;padding-top:12px;border-top:1px dashed #e2e8f0}
   .dct-term-row figure{display:flex;flex-direction:column;align-items:center}
   .dct-term-row canvas{max-width:300px;margin:0 auto}
@@ -169,6 +205,16 @@
   .color-grid figcaption{text-align:center}
   .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
   .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  /* 量化页：四张 8×8 图排成 2×2 宫格独占演示台首屏，算式区挂在下方说明面板里 */
+  .quant-grid{display:grid;grid-template-columns:repeat(2,minmax(0,calc(var(--quant-tile) + 48px)));justify-content:center;align-content:center;gap:16px 28px;align-items:start;width:100%;max-width:var(--quant-grid-w);margin:0 auto}
+  .quant-grid figure{display:flex;flex-direction:column;align-items:center;width:100%;min-width:0}
+  /* setupCanvas 会给每块画布写行内 max-width，这一页的图块尺寸统一由宫格变量决定，覆盖它 */
+  .quant-grid canvas{width:100%;max-width:var(--quant-tile)!important;margin:0 auto}
+  .quant-grid figcaption{text-align:center;line-height:1.45;margin-top:8px}
+  /* 说明面板里的算例区：横跨三列，与上方说明之间用一条虚线隔开 */
+  .panel-quant{grid-column:1/-1;margin-top:18px;padding-top:14px;border-top:1px dashed #e2e8f0}
+  .panel-quant .quant-work{max-width:1040px;margin:0 auto}
+  .quant-foot{width:100%;max-width:1040px;margin:12px auto 0}
   .sub-compare{margin-top:18px;padding-top:14px;border-top:1px dashed #e2e8f0}
   .sub-compare-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px}
   .sub-compare-head span{font-weight:400;color:var(--muted);font-size:11.5px}
@@ -209,7 +255,7 @@
   .matlab-ref th:first-child,.matlab-ref td:first-child{text-align:left}
   .matlab-ref tbody tr.hit td{background:#eef4ff;color:var(--blue);font-weight:600}
   .matlab-ref-foot{font-size:11px;color:var(--muted);margin:8px 0 0;line-height:1.5}
-  .quant-work{margin-top:14px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fbfcfe}
+  .quant-work{width:100%;margin:0 auto;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fbfcfe}
   .quant-work-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--text);margin-bottom:10px}
   .quant-work-head span{font-size:11px;color:var(--muted)}
   .quant-equation{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -219,7 +265,8 @@
   .q-chip.q-out{border-color:#9db8f5;background:var(--blue-soft)}
   .q-op{font-size:12px;font-weight:700;color:var(--blue)}
   .quant-work .note{margin:6px 0 0;line-height:1.6}
-  #quantRuler{display:block;width:100%;max-width:660px;margin-top:8px}
+  /* setupCanvas 按栅格上限写过行内 max-width，这里把标尺宽度锁回量程图需要的 660 */
+  #quantRuler{display:block;width:100%;max-width:660px!important;margin:10px auto 0}
   .hvs-crop canvas{image-rendering:pixelated}
   figure{margin:0}
   figcaption,.cap{font-size:12.5px;color:#475569;line-height:1.55;margin:6px 0 0}
@@ -241,11 +288,41 @@
   table.data td{padding:7px 8px;border-bottom:1px solid var(--border-soft);font-variant-numeric:tabular-nums}
   table.data code{font-family:Consolas,monospace;color:#1e3a8a}
   .scroll{max-height:330px;overflow:auto;border:1px solid var(--border-soft);border-radius:11px}
+  /* 分步标号 ①②③：让「位流 / 码树 / 码字清单」三层的阅读顺序一眼可见 */
+  .step-mark{color:var(--blue);font-weight:700;margin-right:4px}
+  .huff-saving{margin-left:14px;color:#64748b}
+  .huff-saving b{color:#c2410c;font-size:13px}
+  /* 演示台、表格、位流条都不画滚动条：超出时依旧能用滚轮/触摸/键盘滚，
+     只是屏幕上不再出现一根灰条把画面切断 */
+  .main,.scroll,.bits{scrollbar-width:none;-ms-overflow-style:none}
+  .main::-webkit-scrollbar,.scroll::-webkit-scrollbar,.bits::-webkit-scrollbar{width:0;height:0}
   .bits{font-family:Consolas,"Cascadia Mono",monospace;font-size:12px;line-height:1.75;word-break:break-all;background:var(--surface-soft);border:1px solid var(--border-soft);border-radius:10px;padding:9px;max-height:150px;overflow:auto}
   .bits .one{color:var(--blue);font-weight:700}
   .bits .zero{color:#8695aa}
   .bits .used{background:#fff1d6}
   .bits .cursor{color:#c2410c;font-weight:700}
+  /* Huffman 页位流：一格一个符号，格内竖排「符号名 / 码字+幅值位」，
+     每格自成一块，读者不用来回查表就知道这一小段比特属于谁 */
+  .bits.bitstream{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px;max-height:none;word-break:normal}
+  .bitstream .bitgroup{display:inline-flex;flex-direction:column;align-items:center;gap:1px;
+    margin:0;padding:4px 9px;min-width:56px;background:#f1f5fd;border:1px solid #e3eaf8;border-radius:7px;white-space:nowrap}
+  .bitstream .bitgroup:hover{background:#e4ecfa;border-color:#c9d8f2}
+  .bitstream .bitgroup>i{font-style:normal}
+  .bitstream .groupname{font-style:normal;font-size:10.5px;line-height:1.2;color:#64748b}
+  .bitstream .codebits{font-size:13.5px;font-weight:700;letter-spacing:.5px}
+  .bitstream .ampbits{font-size:13.5px;font-weight:700;letter-spacing:.5px;background:#ffe6ab;border-radius:3px;padding:0 3px}
+  /* 唯一码字清单：一行 chips，统计并入同一行 */
+  .huff-codes{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+  .huff-stat{font-size:11px;color:#64748b;margin-right:4px}
+  .huff-code{display:inline-flex;align-items:baseline;gap:5px;padding:3px 8px;border:1px solid #e3eaf8;border-radius:7px;background:#fbfdff}
+  .huff-code b{font-size:11px;color:#334155}
+  .huff-code i{font-family:Consolas,monospace;font-style:normal;font-size:11.5px;font-weight:700;color:#1d4ed8}
+  .huff-code em{font-style:normal;font-size:10px;color:#94a3b8}
+  .huff-run{display:flex;flex-wrap:wrap;gap:4px 22px;margin-top:10px;padding-top:8px;
+    border-top:1px dashed #e2e8f0;font-size:11.5px;color:#475569}
+  .huff-run b{color:#64748b;font-weight:600;margin-right:4px}
+  #huffBytes{font-family:Consolas,monospace;color:#1d4ed8;font-weight:700}
+  .huff-tree-figure{margin:0}
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
   .chip{background:#eef3fb;border:1px solid #dbe6f5;border-radius:999px;padding:3px 9px;font-size:11.5px;color:#334155}
   .note{font-size:12.5px;line-height:1.7;color:#52627a;margin:8px 0 0}
@@ -254,6 +331,23 @@
      免得动画一开就把整页顶高、跳出“一屏装下”。 */
   #huffCurrent{min-height:65px}
   #huffReadout{min-height:22px}
+  /* 00 开篇：只有题板 + 两条原理标题，不放图与说明文字 */
+  .opening{display:flex;flex-direction:column;gap:14px}
+  .opening-hero{display:flex;align-items:center;gap:14px 18px;flex-wrap:wrap;padding:11px 18px;border:1px solid #dbe6f7;border-radius:14px;background:linear-gradient(100deg,#eef4ff,#fbfdff)}
+  .opening-hero-title{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .opening-hero-title b{font-size:23px;letter-spacing:.01em;color:#12203a}
+  .opening-hero-title span{font-size:11.5px;font-weight:600;color:var(--blue);letter-spacing:.16em;background:#fff;border:1px solid #dbe6f7;border-radius:999px;padding:3px 10px}
+  /* 开篇只留两条原理的标题：编号 + 大字，两条并排，不放正文与图片 */
+  .opening-rules{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .opening-rule{display:flex;align-items:center;gap:18px;min-width:0;padding:22px 26px;border:1px solid var(--border-soft);border-radius:14px;background:#fff;box-shadow:var(--shadow-sm)}
+  .opening-rule-no{font:700 34px/1 Consolas,monospace;color:var(--blue);letter-spacing:-.02em}
+  .opening-rule h3{margin:0;font-size:25px;line-height:1.3;letter-spacing:.01em;color:var(--text)}
+  .stage.compact .opening{gap:10px}
+  .stage.compact .opening-hero{padding:8px 12px}
+  .stage.compact .opening-hero-title b{font-size:19px}
+  .stage.compact .opening-rule{padding:14px 18px}
+  .stage.compact .opening-rule-no{font-size:26px}
+  .stage.compact .opening-rule h3{font-size:20px}
   .hvs-block{border:1px solid var(--border-soft);border-radius:14px;padding:16px;margin-bottom:16px;background:#fff;box-shadow:var(--shadow-sm)}
   .hvs-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px}
   .hvs-head span{font-weight:400;color:#52627a;font-size:12px;margin-left:0}
@@ -295,19 +389,18 @@
   .hvs-block figcaption{text-align:center;line-height:1.5}
   .ok{color:var(--green);font-weight:600}
   .warn{color:var(--orange);font-weight:600}
-  .rle-dc{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-bottom:12px}
-  .rle-dc .card{flex:1;min-width:120px}
   .error{color:var(--red);font-weight:600}
-  .main::-webkit-scrollbar,.scroll::-webkit-scrollbar,.stepper::-webkit-scrollbar,.main>.left::-webkit-scrollbar{width:8px;height:8px}
-  .main::-webkit-scrollbar-thumb,.scroll::-webkit-scrollbar-thumb,.stepper::-webkit-scrollbar-thumb,.main>.left::-webkit-scrollbar-thumb{background:#cbd7e6;border-radius:8px;border:2px solid transparent;background-clip:content-box}
-  .main::-webkit-scrollbar-thumb:hover,.scroll::-webkit-scrollbar-thumb:hover,.stepper::-webkit-scrollbar-thumb:hover,.main>.left::-webkit-scrollbar-thumb:hover{background:#a9bbd2;background-clip:content-box}
+  /* 主界面不画滚动条（原来这里画 8px 灰条）：内容超出时滚轮/触摸/键盘照常能滚。
+     必须放在文件靠后的位置，否则会被上面的 width 规则重新盖回可见。 */
+  .main::-webkit-scrollbar,.scroll::-webkit-scrollbar,.stepper::-webkit-scrollbar,.bits::-webkit-scrollbar{width:0;height:0}
 
   /* ---------- 大屏（≥1560px，含 27" 2560×1440）：演示台独占整屏，说明面板留到第二屏 ---------- */
   @media (min-width:1560px){
     /* gap 略大于演示台到达底边前剩下的 18px，保证说明面板完全落在第一屏之外 */
     .main{gap:20px;padding:var(--main-pad-top) clamp(10px,.8vw,22px) var(--main-pad-bottom)}
-    /* 演示台左右不再留白：铺满整个视口宽度 */
-    .main>.right{max-width:none}
+    /* 演示台铺满视口宽度，但给 4K/超宽屏留个上限：3840 原生分辨率下卡片拉到 3800 宽，
+       居中的演示内容会和卡片边框离得太远，收到 2560 后画面与卡片更贴合 */
+    .main>.right{max-width:min(100%,2560px)}
     /* 说明面板移到演示台之后，默认落在视口下方，滚轮下滚才看到；正文限宽保证可读行宽 */
     .main>.left{max-width:min(100%,1680px)}
     .stage{padding:24px 28px}
@@ -331,18 +424,27 @@
     .left{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
     .panel-intro{grid-column:1/-1}
     .grid-4{grid-template-columns:1fr 1fr}
+    /* 四联图（原块 / 重建 / 本项 / 基图索引）在中等屏排 2×2，别把每张压成邮票 */
+    .dct-rebuild-row4{grid-template-columns:repeat(2,minmax(0,1fr))}
   }
   @media (max-width:900px){
     .source-layout{grid-template-columns:minmax(0,1fr);gap:14px}
     .cards{grid-template-columns:1fr 1fr}
+    /* 窄屏放不下并排，两条原理改回上下堆叠 */
+    .opening-rules{grid-template-columns:1fr}
+    .opening-rule{gap:16px;padding:16px 18px}
+    .opening-rule h3{font-size:20px}
   }
   @media (max-width:700px){
     .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
-    .dct-2d-top,.dct-shift-row{grid-template-columns:1fr}
+    .quant-grid{grid-template-columns:1fr}
+    .dct-2d-top,.dct-shift-row,.dct-rebuild-row4{grid-template-columns:1fr}
     .freq-region-row,.freq-pairs{grid-template-columns:1fr}
     .hvs-luma-pairs{grid-template-columns:1fr}
     .hvs-luma-pair + .hvs-luma-pair{border-left:0;padding-left:0;border-top:1px dashed #e2e8f0;padding-top:12px}
     .main{--main-top:6px;--main-bottom:58px;--main-pad-top:6px;--main-pad-bottom:12px;padding:var(--main-pad-top) 8px var(--main-pad-bottom)}
+    /* 小屏 .main 左右留白收到 8px，进度条同步，别比卡片宽出来 */
+    .stepper{max-width:calc(100vw - 16px)}
     .left{grid-template-columns:minmax(0,1fr);padding:14px;gap:0}
     .stage{padding:14px}
     .stepper{bottom:8px}
