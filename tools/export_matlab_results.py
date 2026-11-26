@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """把 MATLAB 批量实验的结果导出成前端可直接 <script> 引入的数据文件。
 
-数据来源（均由 run_project.m / run_experiments.m 生成，不在前端重算）：
-    results/measurements.csv             4 图 × 10 个 Q × 3 种方法 = 120 组灰度实测
-    results/matched_rate_comparison.csv  等码率插值比较（16 个插值点）
+数据来源（均由 run_project.m / run_color_experiment.m 生成，不在前端重算）：
+    results/measurements.csv             1 图 × 3 采样 × (2 自编 + imwrite) × 10 QF = 70 组
+    results/matched_rate_comparison.csv  等码率插值比较（3 采样 × 4 点 = 12 个插值点）
     results/第一轮实验纪要.md              运行环境、生成时间、耗时
 
 输出：
@@ -25,12 +25,13 @@ MATCHED_RATE = os.path.join(ROOT, 'results', 'matched_rate_comparison.csv')
 DIGEST = os.path.join(ROOT, 'results', '第一轮实验纪要.md')
 OUTPUT = os.path.join(ROOT, 'web', 'matlab_results.js')
 
-# 顺序即前端绘图顺序：与 results/figures/02_rate_distortion.png 的四宫格一致
-IMAGES = [
-    ('peppers_gray', '辣椒（灰度裁剪）', '辣椒'),
-    ('synthetic_gradient', '合成：平滑渐变', '渐变'),
-    ('synthetic_texture', '合成：密集纹理', '纹理'),
-    ('synthetic_text', '合成：文字与直线', '文字'),
+IMAGE = ('demo_photo_1024_page', '1024×1024 风景照片', '风景')
+
+# 顺序即前端绘图顺序：与 results/figures/02_rate_distortion.png 的三块面板一致
+SUBSAMPLINGS = [
+    ('444', '4:4:4 不降采样', '4:4:4'),
+    ('422', '4:2:2 水平减半', '4:2:2'),
+    ('420', '4:2:0 水平垂直都减半', '4:2:0'),
 ]
 METHODS = [
     ('custom_jpeg', '自编：频率加权'),
@@ -69,7 +70,7 @@ def maybe_int(value):
     text = str(value).strip().lower()
     if text in ('', 'nan', 'na'):
         return None
-    return int(value)
+    return int(float(value))
 
 
 def maybe_number(value, digits=6):
@@ -80,46 +81,55 @@ def maybe_number(value, digits=6):
 
 
 def read_measurements():
-    image_index = {key: index for index, (key, _full, _short) in enumerate(IMAGES)}
+    subsampling_index = {key: index for index, (key, _full, _short) in enumerate(SUBSAMPLINGS)}
     method_index = {key: index for index, (key, _label) in enumerate(METHODS)}
     rows = []
     with open(MEASUREMENTS, encoding='utf-8-sig', newline='') as handle:
         for record in csv.DictReader(handle):
             image = record['Image'].strip()
+            if image != IMAGE[0]:
+                raise SystemExit('未知的图像：%s' % image)
             method = record['Method'].strip()
-            if image not in image_index or method not in method_index:
-                raise SystemExit('未知的 Image/Method：%s / %s' % (image, method))
+            subsampling = record['Subsampling'].strip()
+            if method not in method_index:
+                raise SystemExit('未知的 Method：%s' % method)
+            if subsampling not in subsampling_index:
+                raise SystemExit('未知的 Subsampling：%s' % subsampling)
             rows.append({
-                'image': image_index[image],
+                'subsampling': subsampling_index[subsampling],
                 'method': method_index[method],
                 'quality': int(record['Quality']),
                 'fileBytes': int(record['FileBytes']),
                 'bpp': round_number(record['BPP'], 6),
                 'compressionRatio': round_number(record['CompressionRatio'], 4),
                 'psnr': round_number(record['PSNR'], 4),
+                'yPsnr': maybe_number(record['YPSNR'], 4),
                 'zeroFraction': maybe_number(record['ZeroFraction'], 6),
                 'entropyBits': maybe_int(record['EntropyBits']),
             })
-    rows.sort(key=lambda row: (row['image'], row['method'], row['quality']))
+    rows.sort(key=lambda row: (row['subsampling'], row['method'], row['quality']))
     return rows
 
 
 def read_matched_rate():
-    image_index = {key: index for index, (key, _full, _short) in enumerate(IMAGES)}
+    subsampling_index = {key: index for index, (key, _full, _short) in enumerate(SUBSAMPLINGS)}
     rows = []
     with open(MATCHED_RATE, encoding='utf-8-sig', newline='') as handle:
         for record in csv.DictReader(handle):
             image = record['Image'].strip()
-            if image not in image_index:
+            if image != IMAGE[0]:
                 raise SystemExit('等码率表出现未知图像：%s' % image)
+            subsampling = record['Subsampling'].strip()
+            if subsampling not in subsampling_index:
+                raise SystemExit('等码率表出现未知采样：%s' % subsampling)
             rows.append({
-                'image': image_index[image],
+                'subsampling': subsampling_index[subsampling],
                 'targetBpp': round_number(record['TargetBPP'], 4),
                 'weightedPsnr': round_number(record['WeightedPSNR'], 4),
                 'uniformPsnr': round_number(record['UniformPSNR'], 4),
                 'deltaPsnr': round_number(record['DeltaPSNR'], 4),
             })
-    rows.sort(key=lambda row: (row['image'], row['targetBpp']))
+    rows.sort(key=lambda row: (row['subsampling'], row['targetBpp']))
     return rows
 
 
@@ -127,8 +137,10 @@ def main():
     meta = read_digest()
     rows = read_measurements()
     matched = read_matched_rate()
-    if len(rows) != 120:
-        raise SystemExit('实测组数应为 120，实际 %d' % len(rows))
+    if len(rows) != 70:
+        raise SystemExit('实测组数应为 70（60 组自编 + 10 组 imwrite），实际 %d' % len(rows))
+    if len(matched) != 12:
+        raise SystemExit('等码率插值点应为 12（3 采样 × 4 点），实际 %d' % len(matched))
 
     payload = {
         'source': {
@@ -139,7 +151,9 @@ def main():
         'environment': meta['environment'],
         'generatedAt': meta['generatedAt'],
         'elapsedSeconds': meta['elapsedSeconds'],
-        'images': [{'key': key, 'label': full, 'short': short} for key, full, short in IMAGES],
+        'image': {'key': IMAGE[0], 'label': IMAGE[1], 'short': IMAGE[2]},
+        'subsamplings': [{'key': key, 'label': full, 'short': short}
+                         for key, full, short in SUBSAMPLINGS],
         'methods': [{'key': key, 'label': label} for key, label in METHODS],
         'qualities': sorted({row['quality'] for row in rows}),
         'rows': rows,
@@ -155,8 +169,8 @@ def main():
 
     qualities = payload['qualities']
     print('wrote %s' % os.path.relpath(OUTPUT, ROOT))
-    print('  %d measurements | %d images x %d qualities x %d methods'
-          % (len(rows), len(IMAGES), len(qualities), len(METHODS)))
+    print('  %d measurements | %d subsampling x %d qualities x %d methods'
+          % (len(rows), len(SUBSAMPLINGS), len(qualities), len(METHODS)))
     print('  %d matched-rate points | %s' % (len(matched), meta['generatedAt'] or '无时间戳'))
 
 

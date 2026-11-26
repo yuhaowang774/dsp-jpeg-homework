@@ -52,8 +52,9 @@
       zigzag: { trigger: '步骤07 Zigzag 按钮', duration: 6400, easing: 'steps', transition: '扫描游标 + 序列条带' },
       rle: { trigger: '步骤08 游程按钮', duration: 3200, easing: 'steps', transition: '符号表行高亮 + 条带游标' },
       bitwrite: { trigger: '步骤09 位流写入按钮', duration: 1400, easing: 'steps', transition: '位串增长 + 字节分组' },
-      assembly: { trigger: '步骤10 拼接按钮', duration: 3600, easing: 'steps', transition: 'MCU 格点顺序点亮' },
-      decode: { trigger: '步骤11 熵解码按钮', duration: 3400, easing: 'steps', transition: '符号表行高亮 + 位游标' },
+      /* 这里的调用方要的是 0→1 的进度再乘 MCU 总数，所以用 linear；
+         换成 steps 会返回「第几拍」的整数，乘上去直接溢出成 6 位数 */
+      assembly: { trigger: '步骤10 拼接按钮', duration: 3600, easing: 'linear', transition: 'MCU 格点顺序点亮' },
       idct: { trigger: '步骤13 IDCT 按钮', duration: 1280, easing: 'easeOutCubic', transition: '基函数累加 + 误差图更新' },
       tour: { trigger: '步骤01 扫描块按钮', duration: 7000, easing: 'easeInOutSine', transition: '仅重绘源图高亮层' },
       freqZoom: { trigger: '原理02 整体缩小演示', duration: 4200, easing: 'easeInOutSine', transition: '整幅图等比例缩小到 1/5 再放大回去，高细节随缩小消失' }
@@ -306,13 +307,46 @@
     target.ctx.drawImage(offscreen.canvas, 0, 0, target.w, target.h);
   }
 
-  function chromaColor(value, tint) {
-    const level = clamp(Math.round(value), 0, 255);
-    const neutral = clamp(255 - Math.abs(level - 128) * 2, 0, 255);
-    return tint === 'cb' ? [neutral, level, neutral] : [level, neutral, neutral];
+  /* 色差平面伪彩：128 = 中性灰，偏离越多越向本分量自己的强调色靠拢
+     （Cb 橄榄绿、Cr 粉红）。灰底让「哪里有颜色」一眼可见，
+     强调色只表示偏离幅度，不代表画面真实颜色。 */
+  const CHROMA_NEUTRAL = [154, 154, 154];
+  const CHROMA_ACCENT = {
+    cb: [179, 176, 63],
+    cr: [208, 114, 143]
+  };
+  const CHROMA_SPAN = 48;
+
+  function chromaRampColor(value, tint) {
+    const level = clamp(Math.abs(value - 128) / CHROMA_SPAN, 0, 1);
+    return mixRGB(CHROMA_NEUTRAL, CHROMA_ACCENT[tint === 'cr' ? 'cr' : 'cb'], level);
   }
 
-  function drawSampleGrid(target, values, width, height, tint) {
+  function drawChromaInto(target, plane, width, height, tint) {
+    const offscreen = offscreenTarget(width, height);
+    const imageData = offscreen.imageData;
+    for (let i = 0; i < width * height; i++) {
+      const rgb = chromaRampColor(clamp(Math.round(plane[i]), 0, 255), tint);
+      imageData.data[i * 4] = rgb[0];
+      imageData.data[i * 4 + 1] = rgb[1];
+      imageData.data[i * 4 + 2] = rgb[2];
+      imageData.data[i * 4 + 3] = 255;
+    }
+    offscreen.ctx.putImageData(imageData, 0, 0);
+    target.ctx.imageSmoothingEnabled = false;
+    target.ctx.drawImage(offscreen.canvas, 0, 0, target.w, target.h);
+  }
+
+  /* 8×8 网格与采样示意图沿用同一条色带，全站「什么颜色 = 什么色差」只有一套口径 */
+  function chromaColor(value, tint) {
+    return chromaRampColor(clamp(Math.round(value), 0, 255), tint);
+  }
+
+  /* 一格 = 一个色度样本。options 让它同时能当“采样方法”的示意图：
+     groupCols × groupRows 每隔几格画一条粗线（= 一个采样组），focus 高亮当前组，
+     labels 在指定格里写数值（焦点组的样本值与取平均后的结果）。 */
+  function drawSampleGrid(target, values, width, height, tint, options) {
+    options = options || {};
     const context = target.ctx;
     const cellWidth = target.w / width;
     const cellHeight = target.h / height;
@@ -332,6 +366,47 @@
     for (let i = 0; i <= height; i++) {
       context.beginPath(); context.moveTo(0, i * cellHeight); context.lineTo(target.w, i * cellHeight); context.stroke();
     }
+    const groupCols = options.groupCols || 0;
+    const groupRows = options.groupRows || 0;
+    if (groupCols && groupRows) {
+      /* 采样组的分界线：4:2:0 每 2 列 + 每 2 行，4:2:2 每 2 列 */
+      context.save();
+      context.strokeStyle = 'rgba(15,23,42,0.52)';
+      context.lineWidth = 2;
+      for (let i = 0; i <= width; i += groupCols) {
+        context.beginPath(); context.moveTo(i * cellWidth, 0); context.lineTo(i * cellWidth, target.h); context.stroke();
+      }
+      for (let i = 0; i <= height; i += groupRows) {
+        context.beginPath(); context.moveTo(0, i * cellHeight); context.lineTo(target.w, i * cellHeight); context.stroke();
+      }
+      context.restore();
+    }
+    if (options.focus && groupCols && groupRows) {
+      const x = options.focus.x * groupCols * cellWidth;
+      const y = options.focus.y * groupRows * cellHeight;
+      context.save();
+      context.strokeStyle = '#0f172a';
+      context.lineWidth = 3;
+      context.strokeRect(x + 1.5, y + 1.5, groupCols * cellWidth - 3, groupRows * cellHeight - 3);
+      context.restore();
+    }
+    (options.labels || []).forEach(function (label) {
+      const cellX = label.x * cellWidth;
+      const cellY = label.y * cellHeight;
+      const size = Math.max(9, Math.round(Math.min(cellWidth, cellHeight) * 0.48));
+      context.font = '700 ' + size + 'px Consolas,"Cascadia Mono",monospace';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      /* 格子里写不下（例如 4×4 里的 “114.5”）就按实测宽度收一档，别让它被画布边缘裁掉 */
+      const limit = cellWidth * 0.86;
+      const measured = context.measureText(label.text).width;
+      if (measured > limit) {
+        context.font = '700 ' + Math.max(8, Math.floor(size * limit / measured)) + 'px Consolas,"Cascadia Mono",monospace';
+      }
+      const value = values[label.y * width + label.x];
+      context.fillStyle = textColor(chromaColor(value, tint));
+      context.fillText(label.text, cellX + cellWidth / 2, cellY + cellHeight / 2 + 0.5);
+    });
   }
 
   /* 有符号量统一用发散色标：0=浅中性、正=暖红、负=冷蓝，端点来自 CSS 变量。 */
@@ -830,6 +905,18 @@
     return { y: y, cb: cb, cr: cr };
   }
 
+  /* 整幅图的三个分量平面（1024×1024 = 104 万次转换，切页/换图才重算一次）。
+     取整口径与 Codec.rgbToYCbCr 一致，和编码器内部用的是同一套公式。 */
+  let fullPlanesCache = { key: '', planes: null };
+
+  function fullImagePlanes() {
+    const key = state.imageId + '|' + state.width + 'x' + state.height;
+    if (fullPlanesCache.key === key && fullPlanesCache.planes) return fullPlanesCache.planes;
+    const planes = Codec.rgbToYCbCr(state.rgb, state.width, state.height);
+    fullPlanesCache = { key: key, planes: planes };
+    return planes;
+  }
+
   function subsampleChroma(values, mode) {
     if (mode === '444') return { data: Float64Array.from(values), width: 8, height: 8 };
     const width = 4;
@@ -856,7 +943,7 @@
 
   const STEPS = [
     {
-      id: 'source', short: '源图', tag: '输入',
+      id: 'source', short: '源图', tag: '输入 02',
       title: '源图像与 8×8 分块',
       lead: '整幅图先切成互不重叠的 8×8 块，后面所有变换都以块为单位。',
       principle: '<p>块按光栅顺序排列；点击右图任意块即可切换分析对象，后续每一步都跟着换。</p><p>默认块由程序在整幅图上打分选出：<b>结构清楚、曝光适中、靠近画面中心</b>。这样 DCT 系数有可讲的形状，量化后会一部分归零、一部分保留，重建差别肉眼可辨。</p>',
@@ -895,10 +982,11 @@
     {
       id: 'subsample', short: '色度采样', tag: '编码 02',
       title: '色度下采样',
-      lead: '把 Cb/Cr 的采样点减半或减到 1/4，亮度 Y 一列不动。',
-      principle: '<p>4:2:0 在水平和垂直方向各减半，色度样本数降到 1/4；4:2:2 只水平减半；4:4:4 不变。人眼对色度不敏感，这一步几乎看不出差别，码率却明显下降。</p>',
-      formula: '4:4:4  8×8 → 8×8\n4:2:2  8×8 → 4×8\n4:2:0  8×8 → 4×4\n色度数据量：100% / 50% / 25%',
-      tips: ['只处理当前 8×8 块，Y 不变', '4:2:0 是码率与观感最常用的折中', '彩色边缘会最先变糊'],
+      lead: '把 Cb/Cr 的采样点减半或减到 1/4，亮度 Y 一个都不动。',
+      principle: '<p>4:2:0 在水平和垂直方向各减半，色度样本数降到 1/4；4:2:2 只水平减半；4:4:4 不变。人眼对色度不敏感，这一步几乎看不出差别，码率却明显下降。</p>' +
+        '<p><b>具体做法：分组取平均。</b>4:2:0 把每 2×2 个像素的色度样本当成一组，组内 4 个数取平均变 1 个；4:2:2 只把水平相邻的 2 个平均，垂直方向不动。右图用粗框画出采样组，鼠标移到网格上就能看到组内 4 个样本怎么变成一个。</p>',
+      formula: '4:2:0  每个 2×2 组 → 1 个样本\n  Cb′(i,j) = [ Cb(2i, 2j) + Cb(2i, 2j+1)\n              + Cb(2i+1, 2j) + Cb(2i+1, 2j+1) ] / 4\n4:2:2  每个 1×2 组 → 1 个样本（水平平均）\n  Cb′(i,j) = [ Cb(i, 2j) + Cb(i, 2j+1) ] / 2\n4:4:4  Cb′ = Cb，不降采样\n样本数：8×8 → 4×4（25%） / 4×8（50%） / 8×8（100%）',
+      tips: ['粗框是一个采样组：4:2:0 把 2×2 的 4 个样本平均成 1 个', '只处理当前 8×8 块，Y 一个样本都不丢', '4:2:0 是码率与观感最常用的折中', '彩色边缘会最先变糊'],
       params: function () {
         const mode = state.subsampling;
         return [
@@ -958,7 +1046,7 @@
         ];
       },
       tools: function () {
-        return '<button class="primary" data-action="goto" data-target="dct:1">下一张：8 个基函数</button>' +
+        return '<button class="primary" data-action="goto" data-target="dct:1">下一张：一行像素画在坐标系里</button>' +
           '<button data-action="prevBlock">上一块</button><button data-action="nextBlock">下一块</button>';
       }
     },
@@ -1109,9 +1197,7 @@
           ['一致性', same ? '<span class="ok">一致</span>' : '<span class="warn">不一致</span>']
         ];
       },
-      tools: function () {
-        return '<button class="primary" data-action="decode">播放熵解码</button>';
-      }
+      tools: function () { return ''; }
     },
     {
       id: 'dequant', short: '反量化', tag: '解码 02',
@@ -1169,12 +1255,12 @@
       }
     },
     {
-      id: 'recolor', short: '重建', tag: '解码 04',
-      title: '色度上采样与逆颜色变换',
-      lead: 'Cb/Cr 上采样回原尺寸，再与 Y 合成 RGB，得到最终解码图像。',
-      principle: '<p>Cb/Cr 先双线性插值回原尺寸，再按逆矩阵恢复 RGB。编码端的下采样前做过平均，相当于先低通再抽取，避免混叠。</p><p>色度损失只让彩色边缘略微发糊，亮度细节基本都在。误差图放大 10 倍，块效应与色度误差才看得清。</p>',
+      id: 'recolor', short: '重建与二次压缩', tag: '解码 04',
+      title: '色度上采样、逆颜色变换与二次压缩',
+      lead: 'Cb/Cr 上采样回原尺寸，与 Y 合成 RGB 得到解码图像；展开下方「二次压缩」还能看再压一次的额外损失。',
+      principle: '<p>Cb/Cr 先双线性插值回原尺寸，再按逆矩阵恢复 RGB。编码端的下采样前做过平均，相当于先低通再抽取，避免混叠。</p><p>色度损失只让彩色边缘略微发糊，亮度细节基本都在。误差图放大 10 倍，块效应与色度误差才看得清。</p><p><b>二次压缩。</b>把第一次重建出的 RGB 用同样 QF 与采样再编解码一遍，模拟“转存后再保存”。这里不再单独占一页：第一次重建就是上面第二张图，下面只补两张对照图与额外损失。</p>',
       formula: 'R = Y + 1.402(Cr−128)\nG = Y − 0.344136(Cb−128) − 0.714136(Cr−128)\nB = Y + 1.772(Cb−128)',
-      tips: ['PSNR 以 RGB 全部通道计算', '色度误差在彩色边缘更明显', 'QF 与采样格式共同决定最终码率'],
+      tips: ['PSNR 以 RGB 全部通道计算', '色度误差在彩色边缘更明显', 'QF 与采样格式共同决定最终码率', '展开下方「二次压缩」看再压一次的额外损失（第一次重建就是上面第二张图）'],
       params: function () {
         return [
           ['采样格式', state.subsampling === '444' ? '4:4:4' : state.subsampling === '422' ? '4:2:2' : '4:2:0'],
@@ -1246,8 +1332,8 @@
       }
     },
     /* 10 章：MATLAB 批量实测结果。四页只做绘图，不重算实验：
-       页 1 读 web/color_reference.js（src/run_color_experiment.m 生成的彩色 30 组，输入就是网页默认的风景照片），
-       页 2–4 读 web/matlab_results.js（tools/export_matlab_results.py 从 results/*.csv 导出的灰度 120 组），
+       页 1 读 web/color_reference.js（run_color_experiment.m 生成的自编频率加权 30 组），
+       页 2–4 读 web/matlab_results.js（tools/export_matlab_results.py 从 results/*.csv 导出的 70 组），
        数值都能和 results/ 里的 CSV、纪要逐行对照。 */
     {
       id: 'matlabColor', short: '彩色实测', tag: '实测 01',
@@ -1269,25 +1355,25 @@
         ];
       },
       tools: function () {
-        return '<button class="primary" data-action="goto" data-target="matlab:1">下一节：灰度 120 组率失真</button>' +
-          '<button data-action="goto" data-target="result">回 09 看逐位对照表</button>';
+        return '<button class="primary" data-action="goto" data-target="matlab:1">下一节：70 组彩色率失真</button>' +
+          '<button data-action="goto" data-target="decode:3">回 08.4 看逐位对照表与二次压缩</button>';
       }
     },
     {
-      id: 'matlabRate', short: '灰度率失真', tag: '实测 02',
-      title: 'MATLAB 实测：120 组灰度率失真曲线',
-      lead: '4 张 256×256 灰度图 × 10 个 Q × 3 种量化方法，共 120 组实测，全部落在「码率–PSNR」平面上：越靠左上，同样的体积换来更高的画质。',
-      principle: '<p><b>数据从哪来。</b><code>run_project.m</code> 把 4 张图在 Q = 5…100 上各跑三种方法——自编频率加权、自编等步长、MATLAB <code>imwrite</code>——结果写进 <code>results/measurements.csv</code>，本页图表直接由这张表重绘（与 <code>results/figures/02_rate_distortion.png</code> 同一份数据，没有做平滑或拟合）。</p>' +
-        '<p><b>怎么读。</b>横轴是完整文件码率 bpp（含文件头与 FF00 填充），纵轴是 PSNR。同一条线把同一方法的 10 个实测点连起来，只起辅助阅读作用。<b>三条线并不重合</b>：同一个 Q 在三种方法下量化步长不同，写出的字节数也不同，所以「同 Q 比较」并不等于「同码率比较」。</p>' +
-        '<p><b>两条曲线的形状说明了什么。</b>低码率段陡、高码率段平：把明显的高频丢掉很省体积，再往上抠细节则要付出越来越大的码率。Q = 100 附近三条线重新贴近，因为量化步长都趋近 1，差别只剩取整与色度处理。</p>',
-      formula: 'bpp = 完整文件字节 × 8 / (256 × 256)\n压缩比 = 原始像素字节 / 完整文件字节\nPSNR = 10 · log10( 255² / MSE )\n连线仅辅助阅读，实测点之间未插值',
-      tips: ['横轴比的是完整文件字节，不是零系数比例', '同一个 Q 下三种方法的字节数不同，别把同 Q 当同码率', '低码率段很陡：此时再压一点体积，PSNR 掉得很快', 'Q = 100 三条线收拢，量化步长都趋近 1'],
+      id: 'matlabRate', short: '彩色率失真', tag: '实测 02',
+      title: 'MATLAB 实测：70 组彩色率失真曲线',
+      lead: '同一张 1024×1024 风景照片 × 4:4:4 / 4:2:2 / 4:2:0 × 10 个 QF：自编频率加权 30 组、自编等步长 30 组，再加 imwrite 基线 10 组。',
+      principle: '<p><b>数据从哪来。</b><code>run_project.m</code> 在 QF = 5…100 上跑三种量化策略，结果写进 <code>results/measurements.csv</code>，本页图表直接由这张表重绘（与 <code>results/figures/02_rate_distortion.png</code> 同一份数据，没有平滑或拟合）。</p>' +
+        '<p><b>为什么分成三块面板。</b>三种采样的样本数不同（3N / 2N / 1.5N），把 4:2:0 的点混进 4:4:4 的坐标系会把「采样收益」算成「量化表收益」。同一条线只连同一采样、同一方法的 10 个实测点。</p>' +
+        '<p><b>imwrite 只有一条。</b>MATLAB <code>imwrite</code> 不暴露采样因子，本轮从生成的 SOF0 段解析出它实际用 4:2:0，所以它只出现在 4:2:0 面板里，不伪造另外两条。<b>等步长表在 QF ≤ 10</b> 被 255 上限截断，这两档是同一个点，所以两条线在低码率端起点重合。</p>',
+      formula: 'bpp = 完整文件字节 × 8 / (1024 × 1024)\n压缩比 = 原始RGB字节 / 完整文件字节\nPSNR = 10 · log10( 255² / MSE )\n连线仅辅助阅读，实测点之间未插值',
+      tips: ['横轴比的是完整文件字节，不是零系数比例', '三种采样分开画：采样率不同不能混进同一坐标系', '同一个 QF 下三种策略的字节数不同，别把同 QF 当同码率', 'imwrite 只实测了 4:2:0，另两块面板没有它的线'],
       params: function () {
         const data = matlabData();
         return [
-          ['实测组数', data ? data.rows.length + ' 组' : '未找到数据'],
-          ['图像 / Q / 方法', '4 张 / 10 档 / 3 种'],
-          ['数据来源', 'results/measurements.csv'],
+          ['实测组数', data ? data.rows.length + ' 组（60 自编 + 10 imwrite）' : '未找到数据'],
+          ['输入 / QF', '1024×1024 风景照片 / 10 档'],
+          ['采样 / 方法', '3 种 / 3 种（imwrite 仅 4:2:0）'],
           ['实验环境', data && data.environment ? data.environment : 'MATLAB R2024b']
         ];
       },
@@ -1299,46 +1385,98 @@
     {
       id: 'matlabSparsity', short: '稀疏度与体积', tag: '实测 03',
       title: 'MATLAB 实测：稀疏度与文件大小',
-      lead: '同一批实测换个横轴：左边看量化后零系数占多少，右边看真正写出的完整文件有多大。',
+      lead: '同一批实测换两个纵轴：左边看量化后零系数占多少，右边看真正写出的完整文件有多大。',
       principle: '<p><b>零系数比例只是中间量。</b>它统计的是量化之后有多少格变成 0，还没经过熵编码。真正决定文件大小的是剩下那些非零系数落在什么符号上、Huffman 给每个符号多长的码字。</p>' +
-        '<p><b>所以两张图的纵轴差别很大。</b>平滑渐变图在 Q = 35 时已有 95% 的系数为 0，压缩比却是四张图里最高的；密集纹理图的零系数掉得最快，但它的压缩比一直最低——非零系数虽然少，幅值大、游程短，反而更「贵」。<b>不能用零系数比例代替压缩比</b>，这也是答辩时常被追问的一点。</p>',
-      formula: '零系数比例 = count(量化后 = 0) / 全部系数\n压缩比 = 原始像素字节 / JPEG 完整文件字节\n文件字节 = 熵编码字节 + 头与标记 + FF00 填充',
-      tips: ['左轴的单位是百分比，右轴是压缩比（倍）', '零系数多不等于文件小，要看非零系数的幅值与分布', '纹理图的零系数掉得最快，压缩比却始终最低', 'Q 不是画质百分比：Q = 100 仍可能因取整而丢信息'],
+        '<p><b>同一张图、同一个 QF，三种采样的零系数比例几乎一样。</b>QF = 5 时 4:4:4 是 98.8%、4:2:0 是 98.4%，但完整文件压缩比分别是 73.8:1 与 132.9:1，差了近一倍。差别不在「有多少个零」，而在剩下的非零系数幅值、游程与符号分布。<b>不能用零系数比例代替压缩比</b>，这也是答辩时常被追问的一点。</p>',
+      formula: '零系数比例 = count(量化后 = 0) / 全部系数\n压缩比 = 原始RGB字节 / JPEG 完整文件字节\n文件字节 = 熵编码字节 + 头与标记 + FF00 填充',
+      tips: ['左轴的单位是百分比，右轴是压缩比（倍）', '零系数几乎相同，压缩比仍可差近一倍', '零系数多不等于文件小，要看非零系数的幅值与分布', 'QF 不是画质百分比：QF = 100 仍可能因取整而丢信息'],
       params: function () {
         const data = matlabData();
         return [
-          ['统计对象', '自编频率加权（每图 10 档 Q）'],
+          ['统计对象', '自编频率加权（3 采样 × 10 档）'],
           ['左图纵轴', '零系数比例 / %'],
           ['右图纵轴', '压缩比 = 原始 / 文件'],
-          ['实测点数', data ? '4 图 × 10 档 = 40 点' : '未找到数据']
+          ['实测点数', data ? (data.subsamplings.length * data.qualities.length) + ' 点' : '未找到数据']
         ];
       },
       tools: function () {
-        return '<button data-action="goto" data-target="matlab:1">回上一节：灰度率失真</button>' +
+        return '<button data-action="goto" data-target="matlab:1">回上一节：彩色率失真</button>' +
           '<button class="primary" data-action="goto" data-target="matlab:3">下一节：等码率比较</button>';
       }
     },
     {
       id: 'matlabMatchedRate', short: '等码率比较', tag: '实测 04',
       title: 'MATLAB 实测：等码率下的量化策略比较',
-      lead: '把两条实测曲线按同一个目标 bpp 插值，再比 PSNR——这才是「同码率」的比较，也才配评价「哪种量化表更好」。',
-      principle: '<p><b>为什么必须换坐标系。</b>加权表与等步长表在同一个 Q 下量化步长不同，写出的字节数也不同。直接比同 Q 的 PSNR，等于让两种方法在不同码率上比赛。</p>' +
-        '<p><b>怎么比。</b>取两条实测曲线共同覆盖的 bpp 区间，各取 4 个目标码率做线性插值，得到同一码率下的两个 PSNR。<b>插值点不是实测点</b>，也没有外推——所以柱状图只说明趋势，不能当新数据引用。</p>' +
-        '<p><b>结论按图说话。</b>辣椒与文字图上等步长反而更高（ΔPSNR 为负），平滑渐变上加权略好。本轮数据不支持「频率加权总是 PSNR 更高」，报告里也照实写了这一点。</p>',
+      lead: '三种采样各自把两条实测曲线按同一目标 bpp 插值，再比 PSNR——这才是「同码率」的比较，共 12 个插值点。',
+      principle: '<p><b>为什么必须换坐标系。</b>加权表与等步长表在同一个 QF 下量化步长不同，写出的字节数也不同。直接比同 QF 的 PSNR，等于让两种方法在不同码率上比赛。</p>' +
+        '<p><b>怎么比。</b>按采样分别取两条实测曲线共同覆盖的 bpp 区间，各取 4 个目标码率做线性插值，得到同一码率下的两个 PSNR。<b>插值点不是实测点</b>，也没有外推，所以柱状图只说明趋势，不能当新数据引用。</p>' +
+        '<p><b>结论按图说话。</b>这张图上三种采样、12 个点的 ΔPSNR 全为负（−1.44～−0.18 dB）：同一码率下等步长表的 PSNR 反而更高。本轮数据不支持「频率加权总是更好」，报告里也照实写了这一点。</p>',
       formula: 'ΔPSNR = PSNR(频率加权) − PSNR(等步长)\nΔ > 0：同等码率下加权画质更高\n仅在两条曲线的共同覆盖区间内线性插值',
-      tips: ['Δ 为负表示等步长在该码率下更好', '柱高只表示插值差值，不是实测点', '渐变图 Δ 为正、纹理与文字图 Δ 明显为负', '同一张图内 ①②③④ 是它自己的 4 个目标 bpp，跨图不可平移比较'],
+      tips: ['Δ 为负表示等步长在该码率下更好', '柱高只表示插值差值，不是实测点', '三种采样共 12 个点，本轮全为负', '同一采样内 ①②③④ 是它自己的 4 个目标 bpp，跨采样不可平移比较'],
       params: function () {
         const data = matlabData();
         return [
-          ['插值点数', data ? data.matchedRate.length + ' 个（4 图 × 4 点）' : '未找到数据'],
+          ['插值点数', data ? data.matchedRate.length + ' 个（3 采样 × 4 点）' : '未找到数据'],
           ['比较量', 'ΔPSNR = 加权 − 等步长'],
-          ['插值方式', '共同区间线性插值，不外推'],
+          ['插值方式', '按采样分别插值，不外推'],
           ['数据来源', 'results/matched_rate_comparison.csv']
         ];
       },
       tools: function () {
         return '<button data-action="goto" data-target="matlab:2">回上一节：稀疏度</button>';
       }
+    },
+    /* 整幅图的颜色空间转换：排在「源图像与 8×8 分块」之前，
+       先把一张 RGB 原图换成 Y / Cb / Cr 三张同尺寸分量图，后面的分块、DCT、
+       色度下采样才有明确的处理对象。步骤号 21，插在流程里而不动既有索引。 */
+    {
+      id: 'yccPlanes', short: '三分量', tag: '输入 01',
+      title: 'RGB → YCbCr：整幅图的三张分量图',
+      lead: '把整幅原图逐像素代入转换公式，一次得到三张同尺寸的分量图：一张 Y 亮度、两张色差 Cb 与 Cr。',
+      principle: '<p><b>为什么不直接压 RGB。</b>RGB 三个通道里都混着亮度，人眼对亮度最敏感、对颜色的分辨率却不敏感。换成「亮度 Y + 色差 Cb/Cr」之后，亮度可以全保留、色差稍后降采样，画质几乎不变而数据量明显减少——JPEG 的压缩率有一半来自这一步。</p>' +
+        '<p><b>三张图同尺寸、同像素数。</b>Y 就是灰度图（0 全黑、255 全白）；Cb、Cr 是以 128 为中性的色差，值越小越偏黄/偏青、越大越偏蓝/偏红。三张图各 8 bit，样本总数与 RGB 相同，所以这一步<b>无损</b>，只是换了一种表示。</p>' +
+        '<p><b>为什么 Cb/Cr 是「灰底 + 彩色斑块」。</b>色差以 128 为中性，本页把 128 画成中性灰，偏离 128 越多越向该分量自己的强调色靠拢（Cb 橄榄绿、Cr 粉红）。所以灰 = 这里几乎是黑白，彩色斑块 = 这里有明显的色差；颜色只表示偏离幅度，不是画面真实颜色。</p>',
+      formula: 'Y  =  0.299R + 0.587G + 0.114B\nCb = 128 − 0.168736R − 0.331264G + 0.500B\nCr = 128 + 0.500R − 0.418688G − 0.081312B\n\n逆变换：\nR = Y + 1.402(Cr − 128)\nG = Y − 0.344136(Cb − 128) − 0.714136(Cr − 128)\nB = Y + 1.772(Cb − 128)',
+      tips: [
+        'Y 通道看起来就是灰度图，轮廓与细节全在这里',
+        'Cb 图里橄榄绿、Cr 图里粉红，都是“偏离 128”的地方',
+        '灰底表示该处几乎无色差，颜色不代表画面真实颜色',
+        '四张图边长一致，原图与三张分量可直接对照',
+        '这一步可逆、不丢信息，下一张才开始降采样与量化'
+      ],
+      params: function () {
+        const planes = fullImagePlanes();
+        return [
+          ['图像', escapeHTML(state.imageName)],
+          ['分辨率', state.width + ' × ' + state.height],
+          ['Y 均值 / 范围', mean(planes.y).toFixed(1) + ' / ' + rangeText(planes.y, 0)],
+          ['Cb / Cr 均值', mean(planes.cb).toFixed(1) + ' / ' + mean(planes.cr).toFixed(1)]
+        ];
+      },
+      tools: function () {
+        return '<button class="primary" data-action="goto" data-target="input:1">下一张：8×8 分块</button>';
+      }
+    },
+    /* 22：02 章的独立第 2 页，把原来藏在分页里的「立体对比」单独拿出来展示 */
+    {
+      id: 'freqSolid', short: '立体对比', tag: '原理 02',
+      title: '立体看频率：低频缓坡，高频密锯齿',
+      lead: '把亮度当高度立起来：同一把尺子（z 轴 0–255）下，平缓区是一整片缓坡，细密区是密锯齿。',
+      principle: '<p><b>同一把尺子。</b>两幅三维高度场的 z 轴都取 0–255，所以可以直接比较起伏，而不是各画各的刻度。</p>' +
+        '<p><b>低频是缓坡。</b>相邻像素亮度差小，立起来是大片平缓的山丘，人眼跟得上这种变化。高频是密锯齿：相邻像素差大，立起来满是尖刺，人眼本来就看不清这些细节。</p>' +
+        '<p><b>所以 JPEG 敢删高频。</b>DCT 后高频系数幅值小，量化时先被置零；重建后只剩缓坡轮廓，画面还是认得出来。</p>',
+      formula: '高度场：z = Y(x, y)，z ∈ [0, 255]\n相邻像素差小 → 低频缓坡（保留）\n相邻像素差大 → 高频密锯齿（可删）\n两块使用同一 z 轴量程，便于直接比较',
+      tips: ['两幅图共用 z 轴 0–255，起伏可以直接比', '蓝框区域相邻像素差小，是缓坡', '橙框区域相邻像素差大，是密锯齿', '按住任意一幅拖动，两个三维视角一起转'],
+      params: function () {
+        const fields = frequencySolidFields(buildVisualData());
+        return [
+          ['蓝框相邻差', fields.photoLow.activity.toFixed(1)],
+          ['橙框相邻差', fields.photoHigh.activity.toFixed(1)],
+          ['蓝框峰谷差', Math.round(fields.photoLow.peak)],
+          ['橙框峰谷差', Math.round(fields.photoHigh.peak)]
+        ];
+      },
+      tools: function () { return '<button data-action="goto" data-target="freq:0">上一页：低频与高频</button>'; }
     },
   ];
 
@@ -1362,45 +1500,28 @@
           ];
         },
         tools: function () {
-          return '<button class="primary" data-action="goto" data-target="dct:1">下一张：8 个基函数</button>' +
+          return '<button class="primary" data-action="goto" data-target="dct:1">下一张：一行像素画在坐标系里</button>' +
             '<button data-action="prevBlock">上一块</button><button data-action="nextBlock">下一块</button>';
         }
       };
     },
-    'dct:1': function () {
-      return {
-        short: 'DCT·基函数',
-        title: 'DCT ②：八种固定的余弦模式',
-        lead: '这 8 个波完全由公式决定，和图像无关：k=0 是平的，k 越大，一个 8 点行里塞进的半波越多。',
-        principle: '<p><b>为什么是余弦。</b>一维 DCT 把每个 8 点行假想成左右对称延拓的偶函数，偶函数只用余弦就能拼出来，不需要正弦项——这正是“离散余弦变换”名字的由来。</p>' +
-          '<p><b>8 个波 = 8 根坐标轴。</b>C(0) 是常数、C(1) 半个周期、…、C(7) 最密。它们两两正交（不同的波逐点相乘再求和为 0），所以任何 8 个像素都能唯一写成它们的加权和，每个权重都能单独求解。</p>' +
-          '<p><b>图上只有 8 个采样点。</b>蓝线是连续余弦，黄点才是 DCT 真正取值的位置 n = 0…7。换任何图像、任何块，这 8 个波都不变，变的只是权重 X(0)…X(7)。</p>',
-        formula: 'C(k, n) = αk · cos[π(n + 1/2)k / 8]\nα0 = 1/√8，αk = 1/2（k > 0）\nn = 0…7：每个波取 8 个点\n正交：Σn C(i,n)·C(j,n) = 0（i ≠ j）',
-        tips: ['k 是频率序号：k 越大，波越密', 'k=0 是一条平线，只表示平均值', '这 8 个波与图像无关，换块也不变', '两两正交，权重才能各自独立算出来'],
-        params: function () {
-          return [
-            ['基函数个数', '8（k = 0…7）'],
-            ['k = 0 峰值', '1/√8 ≈ 0.354'],
-            ['k > 0 峰值', '1/2 = 0.5'],
-            ['正交性', 'Σ C(i)·C(j) = 0（i ≠ j）']
-          ];
-        },
-        tools: function () {
-          return '<button class="primary" data-action="goto" data-target="dct:2">下一张：一行像素怎么拆</button>' +
-            '<button data-action="prevBlock">上一块</button><button data-action="nextBlock">下一块</button>';
-        }
-      };
-    },
-    'dct:2': function () {
+    'dct:3': function () {
       return {
         short: 'DCT·一维',
-        title: 'DCT ③：一行像素拆成 8 个余弦波',
-        lead: '取块里的一行：8 个像素 = 刚才那 8 个余弦波按权重相加，权重就是内积算出的系数。',
-        principle: '<p><b>把一行像素放进这组坐标轴。</b>上一页的 8 个波两两正交，像互相垂直的 8 根轴；这一行 8 个数就是空间里的一个点，它在每根轴上的投影长度就是 X(0)…X(7)。</p>' +
-          '<p><b>求权重就是量“像不像”。</b>与某个波逐点相乘再求和：像 → |系数| 大；不像 → 0；相位相反 → 负数。8 项全用残差为 0，少用几项才开始失真。</p>' +
-          '<p><b>右图看每次加了什么。</b>左侧曲线是「已经加了几项」的逼近结果，右侧是下一个要加进去的 X(k)·C(k) 波形——加到最后一条残差归零。</p>',
-        formula: 'X(k) = Σn f(n)·C(k,n)     ← 内积求权重\nf(n) = Σk X(k)·C(k,n)      ← 8 项全用 = 原行\n8 项全用：残差 = 0\n少用几项：先丢的总是高频',
-        tips: ['X(0) 是这行像素减 128 后的平均值', 'X(0) 为负说明整行比中灰更暗', 'k 越大条纹越密，越靠高频', '负系数 = 相位相反（亮暗颠倒）'],
+        title: 'DCT ④：一行像素拆成 8 个余弦波',
+        lead: '③ 页的 8 个余弦基就是 8 根轴；这一页把这一行的权重算出来，再一项一项加回去。',
+        principle: '<p><b>接着前面两页。</b>② 页把这一行画成坐标系里的 8 个采样点，③ 页给出 8 个余弦基。现在把两者合起来：这 8 个数 = 8 个基各乘一个权重再相加。</p>' +
+          '<p><b>为什么 8 个数一定拆得开？</b>8 点 DCT 的变换矩阵 T 是<b>正交矩阵</b>，它的 8 列就是 8 个余弦基 C(0)…C(7)：两两垂直（正交）、长度都归一。这 8 根轴合起来刚好撑满 8 维空间，构成一组<b>完备正交基</b>——就像平面上的 x、y 轴，只是搬到了 8 维。所以<b>任意 8 个采样点，都一定能写成这 8 个基的加权和，而且写法唯一</b>，一根轴都不用多、一根也不能少。</p>' +
+          '<p><b>权重为什么好算？</b>两两垂直，投影互不干扰：某个基上的权重 = 这一行与它逐点相乘再求和（内积）。不用解 8 元方程组，8 个系数各算各的。</p>' +
+          '<p><b>所以 DCT 本身不丢信息。</b>8 项全用残差为 0，像素原样回来；JPEG 省码率不是“表示不了”，而是主动把小权重丢掉（下一步量化）。右图演示的正是「一项一项加回来」的过程。</p>',
+        formula: 'X(k) = Σn f(n)·C(k,n)       ← 内积 = 投影，直接得权重\nf(n) = Σk X(k)·C(k,n)       ← 8 项全用 = 原行\n正交：Σn C(i,n)·C(j,n) = 0（i ≠ j）\nT·Tᵀ = I → 完备正交基，表示唯一\n8 项全用：残差 = 0；少用几项：先丢高频',
+        tips: [
+          '8 个像素 = 8 维空间的一个点，8 个余弦基是 8 根互相垂直的轴',
+          '正交且完备 → 任意 8 个数都拆得开，且拆法唯一',
+          '权重 = 与某个基做内积，不必解方程组',
+          '8 项全用残差为 0；只有少用项才会失真',
+          'X(0) 是这行减 128 后的平均值，为负说明整行偏暗'
+        ],
         params: function () {
           const row = state.dctRow < 0 ? bestRowOfBlock() : state.dctRow;
           const values = dctRowValues(row);
@@ -1422,15 +1543,74 @@
         },
         tools: function () {
           return '<button class="primary" data-action="basis">自动播放叠加</button>' +
-            '<button data-action="goto" data-target="dct:3">下一张：行列分解</button>' +
+            '<button data-action="goto" data-target="dct:4">下一张：行列分解</button>' +
             '<button data-action="prevBlock">上一块</button>';
         }
       };
     },
-    'dct:4': function () {
+    /* ② 只画数据：一行 8 个像素画在坐标系里，不叠加任何余弦波。
+       先把「原始数据长什么样」看清楚，③ 才把余弦基端上来。 */
+    'dct:1': function () {
+      return {
+        short: 'DCT·一行',
+        title: 'DCT ②：一行像素画在坐标系里',
+        lead: '把一行 8 个像素画到坐标系上：横轴是位置 n = 0…7，纵轴是灰度值 0–255，8 个点连成一条折线。',
+        principle: '<p><b>先不谈变换，只看数据。</b>一行像素就是 8 个采样点：(0, f(0))、(1, f(1)) … (7, f(7))。画到坐标系里，一眼就能看出这一行是从暗到亮、还是中间塌了个坑。</p>' +
+          '<p><b>这 8 个数就是一个 8 维向量。</b>按顺序把它们排成一列 [f(0), f(1), …, f(7)]，它描述的是 8 维空间里的一个点；图里只画了「位置 → 数值」两个维度，完整形状得靠 8 个分量一起看。</p>' +
+          '<p><b>下一页开始换坐标轴。</b>现在用的是「位置 n」这条轴；DCT 会换成 8 条余弦波作轴，把这同样的 8 个数改写成 8 个权重——数据一个都没变，只是换一种说法。</p>',
+        formula: '采样点：(n, f(n))，n = 0…7\n一行像素 = 8 维向量 [f(0), f(1), …, f(7)]\n灰度范围 0（黑）–255（白），中灰 = 128',
+        tips: [
+          '横轴是位置、纵轴是灰度，折线只是把相邻点连起来看趋势',
+          '8 个点 = 这个 8 维向量的 8 个分量',
+          '换一行、换一块，折线跟着变，坐标系不变',
+          '这一页还没有余弦波，下一页才把 8 根轴端上来'
+        ],
+        params: function () {
+          const row = state.dctRow < 0 ? bestRowOfBlock() : state.dctRow;
+          const pixels = dctRowValues(row).pixels;
+          const average = mean(pixels);
+          return [
+            ['当前行', dctRowLabel(row)],
+            ['最大 / 最小', Math.round(Math.max.apply(null, Array.from(pixels))) + ' / ' +
+              Math.round(Math.min.apply(null, Array.from(pixels)))],
+            ['平均值', average.toFixed(1)],
+            ['与中灰 128 之差', (average - 128).toFixed(1)]
+          ];
+        },
+        tools: function () {
+          return '<button class="primary" data-action="goto" data-target="dct:2">下一张：8 根坐标轴</button>' +
+            '<button data-action="prevBlock">上一块</button><button data-action="nextBlock">下一块</button>';
+        }
+      };
+    },
+    'dct:2': function () {
+      return {
+        short: 'DCT·基函数',
+        title: 'DCT ③：八种固定的余弦模式',
+        lead: '上一页把一行 8 个数画成了坐标系里的点；这一页看 DCT 要换上去的 8 根轴：k=0 是平的，k 越大，一个 8 点行里塞进的半波越多。',
+        principle: '<p><b>为什么是余弦。</b>一维 DCT 把每个 8 点行假想成左右对称延拓的偶函数，偶函数只用余弦就能拼出来，不需要正弦项——这正是“离散余弦变换”名字的由来。</p>' +
+          '<p><b>8 个波 = 8 根轴。</b>C(0) 是常数、C(1) 半个周期、…、C(7) 最密。它们两两正交（不同的波逐点相乘再求和为 0），8 根轴撑起整个 8 维空间、不多不少——这是一组<b>完备正交基</b>：任意 8 个像素都能唯一写成它们的加权和，下一页就把权重真的算出来。</p>' +
+          '<p><b>图上只有 8 个采样点。</b>蓝线是连续余弦，黄点才是 DCT 真正取值的位置 n = 0…7。换任何图像、任何块，这 8 个波都不变，变的只是权重 X(0)…X(7)。</p>',
+        formula: 'C(k, n) = αk · cos[π(n + 1/2)k / 8]\nα0 = 1/√8，αk = 1/2（k > 0）\nn = 0…7：每个波取 8 个点\n正交：Σn C(i,n)·C(j,n) = 0（i ≠ j）',
+        tips: ['k 是频率序号：k 越大，波越密', 'k=0 是一条平线，只表示平均值', '这 8 个波与图像无关，换块也不变', '两两正交，权重才能各自独立算出来'],
+        params: function () {
+          return [
+            ['基函数个数', '8（k = 0…7）'],
+            ['k = 0 峰值', '1/√8 ≈ 0.354'],
+            ['k > 0 峰值', '1/2 = 0.5'],
+            ['正交性', 'Σ C(i)·C(j) = 0（i ≠ j）']
+          ];
+        },
+        tools: function () {
+          return '<button class="primary" data-action="goto" data-target="dct:3">下一张：一行像素怎么拆</button>' +
+            '<button data-action="prevBlock">上一块</button><button data-action="nextBlock">下一块</button>';
+        }
+      };
+    },
+    'dct:5': function () {
       return {
         short: 'DCT·二维',
-        title: 'DCT ⑤：64 张基图，64 个权重',
+        title: 'DCT ⑥：64 张基图，64 个权重',
         lead: '这一页看 64 个系数各自代表什么图案、单独一项能贡献多少。',
         principle: '<p><b>基图 = 纵向余弦 × 横向余弦。</b>u 管纵向条纹密度、v 管横向；(0,0) 是一片均匀，(7,7) 是最密的棋盘格。系数是权重而非亮度，负值只表示相位相反。</p>' +
           '<p><b>下方三联图：</b>① 基图长什么样；② 乘上系数后对像素的加减，白提亮、黑压暗；③ 只留这一项能画出什么。</p>' +
@@ -1448,15 +1628,15 @@
         },
         tools: function () {
           return '<button class="primary" data-action="coefftour">逐项巡览</button>' +
-            '<button data-action="goto" data-target="dct:5">下一张：叠加重建</button>' +
+            '<button data-action="goto" data-target="dct:6">下一张：叠加重建</button>' +
             '<button data-action="prevBlock">上一块</button><button data-action="nextBlock">下一块</button>';
         }
       };
     },
-    'dct:3': function () {
+    'dct:4': function () {
       return {
         short: 'DCT·行列',
-        title: 'DCT ④：二维 = 先逐行、再逐列做两次一维',
+        title: 'DCT ⑤：二维 = 先逐行、再逐列做两次一维',
         lead: '二维 DCT 没有新数学：先逐行做一维（横向频率），再逐列做一维（纵向频率）。',
         principle: '<p><b>第一遍只动横向：</b>每行做一次一维 DCT，8 行各做一次，得到一张中间矩阵——此时纵向还是像素坐标。</p>' +
           '<p><b>第二遍动纵向：</b>对中间矩阵的每列再做一次，纵向也变成频率，才得到 F(u,v)，矩阵式 F = T·f·Tᵀ。拆成两次一维是 2×8³ 次乘加，直接按二维算要 64²，差一个数量级——可分离性正是 JPEG 当年能跑在慢速硬件上的原因。</p>',
@@ -1472,14 +1652,14 @@
         },
         tools: function () {
           return '<button class="primary" data-action="twopass">重播行列动图</button>' +
-            '<button data-action="goto" data-target="dct:4">下一张：二维系数</button>';
+            '<button data-action="goto" data-target="dct:5">下一张：二维系数</button>';
         }
       };
     },
-    'dct:5': function () {
+    'dct:6': function () {
       return {
         short: 'DCT·重建',
-        title: 'DCT ⑥：64 项加权相加 = 原块',
+        title: 'DCT ⑦：64 项加权相加 = 原块',
         lead: '把 64 项按权重从大到小一层层叠上去：前几项搭出轮廓，其余项补细纹；全部加完，与原块分毫不差。',
         principle: '<p><b>按 |F| 降序叠加。</b>前 3 项常占七成以上能量，只叠它们就能看出明暗结构；后面几十项数值很小，只补细纹。因为基图两两正交，按 |F| 排序与“每步挑残差最大”结果完全一样。</p>' +
           '<p><b>64 项全加完误差为 0</b>，这才是 DCT 无损的含义。真正的损失在下一步量化：取整、把小系数砍成 0。</p>' +
@@ -1689,6 +1869,71 @@
   /* ------------------------------------------------------------------ */
   /* 各步骤可视化                                                        */
   /* ------------------------------------------------------------------ */
+
+  /* ---- 整幅图：原图 + RGB → YCbCr 的三张分量图 ------------------------
+     三列网格：第一列上排是原图、下排是 Y 分量，原图正好压在 Y 头上、左边缘对齐；
+     转换公式横跨第二、三列，落在 Cb / Cr 上方。四张图边长完全一致（按可用高度反推，
+     上下两排各占一半）。Y 是真实亮度（灰阶），Cb/Cr 用伪彩标出色差方向。 */
+  function renderYccPlanesStep() {
+    const planes = fullImagePlanes();
+    /* 四张图同一个边长：整页要塞进一屏，上下两排各占一半高度。
+       200px 是图注、说明文字与排间距的预留，剩下的一半分给每排的方形图。 */
+    const sidePx = clamp(Math.floor((stageViewportHeight() - 200) / 2), 150, 460);
+    const side = SMALL_SCREEN ? 'min(100%, 420px)' : sidePx + 'px';
+    /* 三列宽度都写成图宽，整个网格居中，原图与 Y 因此严丝合缝地对齐 */
+    const boardStyle = SMALL_SCREEN ? '' : ' style="--ycc-cols:repeat(3,' + sidePx + 'px)"';
+    function planeFigure(id, tag, name, values, accent) {
+      return '<figure class="ycc-fig ' + accent + '">' +
+        canvasTag(id, tag + ' ' + name) +
+        '<figcaption><span class="ycc-tag">' + tag + '</span>' + name +
+        ' · 均值 ' + mean(values).toFixed(1) +
+        '</figcaption></figure>';
+    }
+    stage.innerHTML =
+      '<div class="ycc-board"' + boardStyle + '>' +
+        '<figure class="ycc-fig ycc-src">' +
+          '<canvas id="yccSource" role="img" aria-label="原图 ' + escapeHTML(state.imageName) + '，彩色 RGB 参考"></canvas>' +
+          '<figcaption><span class="ycc-tag">原图</span>RGB · ' + state.width + ' × ' + state.height + '</figcaption>' +
+        '</figure>' +
+        '<div class="ycc-formula-card">' +
+          '<div class="ycc-eq" role="img" aria-label="Y、Cb、Cr 等于 3×3 系数矩阵乘 R、G、B 再加偏移量 0、128、128">' +
+            '<span class="ycc-mat vec"><i class="var">Y</i><i class="var">C<sub>b</sub></i><i class="var">C<sub>r</sub></i></span>' +
+            '<span class="ycc-op">=</span>' +
+            '<span class="ycc-mat mat3">' +
+              '<i class="num">0.299</i><i class="num">0.587</i><i class="num">0.114</i>' +
+              '<i class="num">−0.168736</i><i class="num">−0.331264</i><i class="num">0.500</i>' +
+              '<i class="num">0.500</i><i class="num">−0.418688</i><i class="num">−0.081312</i>' +
+            '</span>' +
+            '<span class="ycc-mat vec"><i class="var">R</i><i class="var">G</i><i class="var">B</i></span>' +
+            '<span class="ycc-op">+</span>' +
+            '<span class="ycc-mat vec"><i class="num">0</i><i class="num">128</i><i class="num">128</i></span>' +
+          '</div>' +
+          '<p class="ycc-formula-note">Y 占 <b>0.587G</b> 的权重，说明亮度主要由绿色贡献；Cb/Cr 只做色差，<b>128 为中性</b>。这一步可逆，不丢信息。</p>' +
+        '</div>' +
+        planeFigure('yccY', 'Y', '亮度（灰阶）', planes.y, 'ycc-y') +
+        planeFigure('yccCb', 'Cb', '蓝色差 · 橄榄绿 = 偏离 128', planes.cb, 'ycc-cb') +
+        planeFigure('yccCr', 'Cr', '红色差 · 粉红 = 偏离 128', planes.cr, 'ycc-cr') +
+      '</div>' +
+      '<p class="note">四张图同尺寸，各 ' + (state.width * state.height).toLocaleString() +
+        ' 个样本。Y 是灰度图；<b>Cb/Cr 以 128 为中性灰</b>，偏离越多越向本分量的强调色靠拢' +
+        '（Cb 橄榄绿、Cr 粉红），所以灰底 = 这里几乎没有色差、彩色斑块 = 色差明显，' +
+        '<b>颜色不代表画面真实颜色</b>。下一页三张图各自被切成 8×8 块，色差通道还可以降采样。</p>';
+
+    const planesByCanvas = { yccY: planes.y, yccCb: planes.cb, yccCr: planes.cr };
+    Object.keys(planesByCanvas).forEach(function (id) {
+      /* 位图按 512 边长存即可：最终显示宽度不超过 460 CSS px，放大会按设备像素比同步加密 */
+      const target = setupCanvas(id, 512, 512);
+      if (!target) return;
+      target.canvas.style.maxWidth = side;
+      if (id === 'yccY') drawPlaneInto(target, planesByCanvas[id], state.width, state.height);
+      else drawChromaInto(target, planesByCanvas[id], state.width, state.height, id === 'yccCb' ? 'cb' : 'cr');
+    });
+    const source = setupCanvas('yccSource', 512, 512);
+    if (source) {
+      source.canvas.style.maxWidth = side;
+      drawRGBInto(source, state.rgb, state.width, state.height);
+    }
+  }
 
   function renderSourceStep() {
     stage.innerHTML = '<div class="source-layout">' +
@@ -1910,14 +2155,95 @@
       return;
     }
     stage.innerHTML = '<div class="grid-4">' +
-      figure('subCbOriginal', 'Cb 原 8×8') +
+      figure('subCbOriginal', 'Cb 原 8×8 · 粗框 = 采样组') +
       figure('subCbSmall', 'Cb 下采样 ' + sampleSize) +
-      figure('subCrOriginal', 'Cr 原 8×8') +
-      figure('subCrSmall', 'Cr 下采样 ' + sampleSize) + '</div>' + compare;
-    drawSampleGrid(setupCanvas('subCbOriginal', 200, 200), block.cb, 8, 8, 'cb');
-    drawSampleGrid(setupCanvas('subCrOriginal', 200, 200), block.cr, 8, 8, 'cr');
-    drawSampleGrid(setupCanvas('subCbSmall', 200, 200), cbSample.data, cbSample.width, cbSample.height, 'cb');
-    drawSampleGrid(setupCanvas('subCrSmall', 200, 200), crSample.data, crSample.width, crSample.height, 'cr');
+      figure('subCrOriginal', 'Cr 原 8×8 · 同样的分组') +
+      figure('subCrSmall', 'Cr 下采样 ' + sampleSize) + '</div>' +
+      '<p class="note" id="subGroupNote"></p>' + compare;
+
+    /* ---- 采样方法演示：粗框标出采样组，鼠标指到哪组就展开哪组 ----
+       4:2:0 每 2×2 个色度样本取平均成 1 个，4:2:2 每 1×2 个取平均。
+       焦点组里的 4（或 2）个值直接写在格子上，取平均的结果写在右侧小图对应格里。 */
+    const groupCols = 2;
+    const groupRows = mode === '420' ? 2 : 1;
+    const groupText = groupRows === 2 ? '2×2 的 4 个样本' : '水平 2 个样本，垂直不合并';
+    const cbOriginal = setupCanvas('subCbOriginal', 200, 200);
+    const crOriginal = setupCanvas('subCrOriginal', 200, 200);
+    const cbSmall = setupCanvas('subCbSmall', 200, 200);
+    const crSmall = setupCanvas('subCrSmall', 200, 200);
+    const groupNote = document.getElementById('subGroupNote');
+    const focus = { x: 0, y: 0 };
+
+    function groupCellPositions() {
+      const startX = focus.x * groupCols;
+      const startY = focus.y * groupRows;
+      const cells = [];
+      for (let dy = 0; dy < groupRows; dy++) {
+        for (let dx = 0; dx < groupCols; dx++) {
+          cells.push({ x: startX + dx, y: startY + dy });
+        }
+      }
+      return { startX: startX, startY: startY, cells: cells };
+    }
+
+    function paintGroup() {
+      if (!cbOriginal || !crOriginal || !cbSmall || !crSmall) return;
+      const group = groupCellPositions();
+      const cbValues = group.cells.map(function (cell) { return block.cb[cell.y * 8 + cell.x]; });
+      const crValues = group.cells.map(function (cell) { return block.cr[cell.y * 8 + cell.x]; });
+      const cbAverage = cbSample.data[focus.y * cbSample.width + focus.x];
+      const crAverage = crSample.data[focus.y * crSample.width + focus.x];
+      const labelsOf = function (values) {
+        return group.cells.map(function (cell, index) {
+          return { x: cell.x, y: cell.y, text: String(Math.round(values[index])) };
+        });
+      };
+      const gridOptions = { groupCols: groupCols, groupRows: groupRows, focus: focus };
+      drawSampleGrid(cbOriginal, block.cb, 8, 8, 'cb',
+        Object.assign({}, gridOptions, { labels: labelsOf(cbValues) }));
+      drawSampleGrid(crOriginal, block.cr, 8, 8, 'cr',
+        Object.assign({}, gridOptions, { labels: labelsOf(crValues) }));
+      drawSampleGrid(cbSmall, cbSample.data, cbSample.width, cbSample.height, 'cb',
+        { labels: [{ x: focus.x, y: focus.y, text: cbAverage.toFixed(1) }] });
+      drawSampleGrid(crSmall, crSample.data, crSample.width, crSample.height, 'cr',
+        { labels: [{ x: focus.x, y: focus.y, text: crAverage.toFixed(1) }] });
+      if (groupNote) {
+        groupNote.innerHTML = '<b>当前采样组：第 ' + (group.startY + 1) + ' 行、第 ' + (group.startX + 1) +
+          ' 列</b>（' + groupText + '）：Cb ' + cbValues.map(function (value) { return Math.round(value); }).join(' / ') +
+          ' → 平均 <b>' + cbAverage.toFixed(1) + '</b>，写成 Cb′ (' + (focus.y + 1) + ', ' + (focus.x + 1) + ')；' +
+          'Cr ' + crValues.map(function (value) { return Math.round(value); }).join(' / ') +
+          ' → 平均 <b>' + crAverage.toFixed(1) + '</b>。' +
+          (groupRows === 2
+            ? '这 4 个像素的亮度 Y 各存 1 个样本、一个不丢，只有色度被合并。'
+            : '这 2 个像素的亮度 Y 各存 1 个样本，只有色度在水平方向被合并。') +
+          '鼠标移到任一色度网格上可切换采样组。';
+      }
+    }
+
+    paintGroup();
+
+    function focusAt(event, canvas) {
+      const rect = canvas.getBoundingClientRect();
+      const gx = (event.clientX - rect.left) / rect.width * 8;
+      const gy = (event.clientY - rect.top) / rect.height * 8;
+      return {
+        x: clamp(Math.floor(gx / groupCols), 0, 8 / groupCols - 1),
+        y: clamp(Math.floor(gy / groupRows), 0, 8 / groupRows - 1)
+      };
+    }
+
+    [cbOriginal, crOriginal].forEach(function (target) {
+      if (!target) return;
+      target.canvas.style.cursor = 'crosshair';
+      target.canvas.addEventListener('mousemove', function (event) {
+        const next = focusAt(event, target.canvas);
+        if (next.x === focus.x && next.y === focus.y) return;
+        focus.x = next.x;
+        focus.y = next.y;
+        paintGroup();
+      });
+    });
+
     drawSubsampleCompare(crop, mode);
   }
 
@@ -1949,6 +2275,7 @@
     if (view === 'shift') { renderDctShift(); return; }
     if (view === 'twopass') { renderDctTwoPass(); return; }
     if (view === 'basisGrid') { renderDctCosinePage(); return; }
+    if (view === 'rowPlot') { renderDctRowPlot(); return; }
     if (view === 'oneD') { renderDctOneD(); return; }
     if (view === 'rebuild') { renderDctRebuild(); return; }
     renderDctBasisView();
@@ -2689,6 +3016,153 @@
     }
   }
 
+  /* ---- ② 一行像素画在坐标系里 ----------------------------------------
+     这一页只画数据：横轴 n = 0…7（位置）、纵轴灰度 0–255（数值），
+     8 个采样点 + 一条把相邻点连起来的折线。不叠任何余弦波，
+     余弦基留到下一张单独讲。 */
+  const DCT_ROWPLOT_CANVAS = { w: 1240, h: 420 };
+
+  function renderDctRowPlot() {
+    if (typeof state.dctRow !== 'number' || state.dctRow < 0 || state.dctRow > 7) state.dctRow = bestRowOfBlock();
+    const row = state.dctRow;
+    const pixels = dctRowValues(row).pixels;
+    stage.innerHTML = '<div class="dct-1d-top"><div class="dct-row-picker">' +
+      Array.from({ length: 8 }, function (_, index) {
+        return '<button data-index="' + index + '" class="' + (index === row ? 'on' : '') + '">第 ' + (index + 1) + ' 行</button>';
+      }).join('') +
+      '<span class="note">任选一行：换个分析对象，坐标系不变</span></div></div>' +
+      /* 空间域色带：和 04.3 一维页同一套样式，这里只放一条，压成矮条把高度让给下方坐标系 */
+      '<div class="dct-strips single"><div class="dct-strip-col">' +
+      '<p class="dct-strip-head">空间域<em>' + dctRowLabel(row) + ' · 0–255 灰阶</em></p>' +
+      '<div class="dct-cells">' +
+      Array.from(pixels).map(function (value) {
+        const level = Math.round(clamp(value, 0, 255));
+        return '<span style="background:rgb(' + level + ',' + level + ',' + level + ');color:' +
+          (level > 140 ? '#1f2937' : '#ffffff') + '">' + level + '</span>';
+      }).join('') +
+      '</div></div></div>' +
+      '<figure class="dct-1d-figure">' +
+      canvasTag('dctRowPlot', '一行 8 个像素画在坐标系里：横轴是位置 n = 0…7，纵轴是灰度值 0–255') +
+      '</figure>' +
+      '<p class="note">上方 8 格 = 这一行的 8 个像素（灰阶就是数值），下方把它们按位置画进坐标系；' +
+      '这 8 个数就是一个 <b>8 维向量</b>，折线只把相邻点连起来看趋势，不是插值。' +
+      '下一页换上 8 根余弦轴，把这 8 个数改写成 8 个权重。</p>';
+    Array.prototype.forEach.call(stage.querySelectorAll('.dct-row-picker button'), function (button) {
+      button.addEventListener('click', function () {
+        const index = Number(button.getAttribute('data-index'));
+        if (!isFinite(index) || index === state.dctRow) return;
+        state.dctRow = index;
+        renderDctRowPlot();
+      });
+    });
+    drawRowPlot(setupCanvas('dctRowPlot', DCT_ROWPLOT_CANVAS.w, DCT_ROWPLOT_CANVAS.h));
+  }
+
+  function drawRowPlot(target) {
+    const context = target.ctx;
+    const data = dctRowValues(state.dctRow);
+    const pixels = data.pixels;
+    context.clearRect(0, 0, target.w, target.h);
+
+    const cardX = 14;
+    const cardY = 14;
+    const cardWidth = target.w - 28;
+    const cardHeight = target.h - 28;
+    const plotLeft = cardX + 60;
+    const plotRight = cardX + cardWidth - 24;
+    const plotTop = cardY + 62;
+    const plotBottom = cardY + cardHeight - 46;
+    const slot = (plotRight - plotLeft) / 8;
+    const yOf = function (value) { return plotBottom - (value / 255) * (plotBottom - plotTop); };
+
+    context.fillStyle = '#fff';
+    context.fillRect(cardX, cardY, cardWidth, cardHeight);
+    context.strokeStyle = '#e3eaf4';
+    context.lineWidth = 1;
+    context.strokeRect(cardX + 0.5, cardY + 0.5, cardWidth - 1, cardHeight - 1);
+
+    context.fillStyle = '#334155';
+    context.font = '600 13px "Microsoft YaHei", sans-serif';
+    context.textAlign = 'left';
+    context.textBaseline = 'alphabetic';
+    context.fillText(dctRowLabel(state.dctRow) + ' · 8 个采样点', cardX + 16, cardY + 25);
+    context.fillStyle = '#64748b';
+    context.font = '11px Consolas, monospace';
+    context.fillText('横轴 = 位置 n（0…7）    纵轴 = 灰度值（0–255）', cardX + 16, cardY + 43);
+
+    /* 横向参考线：0 / 64 / 128 / 192 / 255，中灰 128 用蓝线标出 */
+    const levels = [0, 64, 128, 192, 255];
+    context.font = '10px Consolas, monospace';
+    context.textAlign = 'right';
+    context.textBaseline = 'middle';
+    for (let i = 0; i < levels.length; i++) {
+      const level = levels[i];
+      const y = yOf(level);
+      context.strokeStyle = level === 128 ? 'rgba(29,78,216,0.32)' : 'rgba(148,163,184,0.3)';
+      context.setLineDash(level === 128 ? [] : [3, 4]);
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(plotLeft, y);
+      context.lineTo(plotRight, y);
+      context.stroke();
+      context.setLineDash([]);
+      context.fillStyle = level === 128 ? 'rgba(29,78,216,0.85)' : '#94a3b8';
+      context.fillText(String(level), plotLeft - 8, y);
+    }
+
+    /* 纵轴与横轴 */
+    context.strokeStyle = 'rgba(148,163,184,0.85)';
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(plotLeft + 0.5, plotTop);
+    context.lineTo(plotLeft + 0.5, plotBottom + 0.5);
+    context.lineTo(plotRight, plotBottom + 0.5);
+    context.stroke();
+
+    /* 折线：只连采样点，说明「相邻位置之间」的走势 */
+    context.beginPath();
+    for (let n = 0; n < 8; n++) {
+      const x = plotLeft + (n + 0.5) * slot;
+      const y = yOf(clamp(pixels[n], 0, 255));
+      if (n === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    }
+    context.strokeStyle = 'rgba(29,78,216,0.75)';
+    context.lineWidth = 2;
+    context.lineJoin = 'round';
+    context.stroke();
+
+    /* 采样点与数值 */
+    context.font = '600 11px Consolas, monospace';
+    context.textAlign = 'center';
+    for (let n = 0; n < 8; n++) {
+      const value = clamp(pixels[n], 0, 255);
+      const x = plotLeft + (n + 0.5) * slot;
+      const y = yOf(value);
+      context.beginPath();
+      context.arc(x, y, 4.5, 0, Math.PI * 2);
+      context.fillStyle = '#fff';
+      context.fill();
+      context.strokeStyle = '#1d4ed8';
+      context.lineWidth = 2;
+      context.stroke();
+      context.fillStyle = '#1e3a8a';
+      const above = y - 14 > plotTop;
+      context.textBaseline = above ? 'bottom' : 'top';
+      context.fillText(String(Math.round(value)), x, above ? y - 8 : y + 8);
+      /* 横轴刻度 */
+      context.fillStyle = '#64748b';
+      context.font = '10px Consolas, monospace';
+      context.textBaseline = 'top';
+      context.fillText(String(n), x, plotBottom + 8);
+      context.font = '600 11px Consolas, monospace';
+    }
+    context.fillStyle = '#94a3b8';
+    context.font = '10px Consolas, monospace';
+    context.textAlign = 'right';
+    context.fillText('n', plotRight, plotBottom + 22);
+  }
+
   /* 一维视角：一行像素 → 8 个系数 → 余弦波加权求和 */
   function renderDctOneD() {
     if (typeof state.dctRow !== 'number' || state.dctRow < 0 || state.dctRow > 7) state.dctRow = bestRowOfBlock();
@@ -2720,7 +3194,9 @@
       '</div></div>' +
       '<figure class="dct-1d-figure">' +
       canvasTag('dctRowBasis', '8 个余弦波加权叠加的逐步逼近过程') +
-      '</figure>';
+      '</figure>' +
+      '<p class="note">这 8 个点 = 8 维空间里的一个点；8 个余弦基两两垂直、刚好撑满 8 维（完备正交基），' +
+      '所以任意 8 个采样点都能唯一拆成「8 个基 × 8 个权重」，8 项全用时残差必为 0。</p>';
     Array.prototype.forEach.call(stage.querySelectorAll('.dct-row-picker button'), function (button) {
       button.addEventListener('click', function () {
         const index = Number(button.getAttribute('data-index'));
@@ -4666,6 +5142,9 @@
   }
 
 
+  /* MCU 方块图的逻辑边长：正方形画布，64×64 个 MCU 各占一个正方形格子 */
+  const BIT_ASSEMBLY_SIZE = 900;
+
   function renderBitstreamStep() {
     const stats = state.encoded.stats;
     stage.innerHTML = metricCards([
@@ -4676,15 +5155,17 @@
       ['Cb 分量位数', stats.bitsPerComponent.Cb, (100 * stats.bitsPerComponent.Cb / stats.totalBits).toFixed(1) + '%'],
       ['Cr 分量位数', stats.bitsPerComponent.Cr, (100 * stats.bitsPerComponent.Cr / stats.totalBits).toFixed(1) + '%']
     ]) + '<p class="note" style="margin-top:10px">下面三张图是同一个数的三种看法：按分量拆（柱状）、按块看分布（直方）、按空间位置铺开（方块图）。全部只统计熵编码段，不含文件头。</p>' +
-      '<div class="grid-2" style="margin-top:12px">' +
+      '<div class="grid-3 bit-overview" style="margin-top:12px">' +
       figure('bitBars', '各分量位数占比（柱高 = 该分量占用的总位数）') +
-      figure('bitHist', '块位数分布（横轴 = 每块位数，纵轴 = 有多少块落在这一档）') + '</div>' +
-      '<figure style="margin-top:12px"><canvas id="bitAssembly" role="img" aria-label="按 MCU 顺序拼接位流，一格一个 MCU，颜色越深位数越多"></canvas>' +
-      '<figcaption>整个画面按 MCU 铺开：一格 = 一个 MCU，颜色越深 = 这一块位数越多（纹理密集处最费比特）</figcaption></figure>' +
+      figure('bitHist', '块位数分布（横轴 = 每块位数，纵轴 = 有多少块落在这一档）') +
+      '<figure><canvas id="bitAssembly" role="img" aria-label="按 MCU 顺序拼接位流，一格一个 MCU，正方形网格，颜色越深位数越多"></canvas>' +
+      '<figcaption>整个画面按 MCU 铺开：一格 = 一个 MCU（正方形），颜色越深 = 这一块位数越多</figcaption></figure>' +
+      '</div>' +
       '<p class="note" id="assemblyReadout"></p>';
-    drawBitBars(setupCanvas('bitBars', 520, 300));
-    drawBitHistogram(setupCanvas('bitHist', 520, 300));
-    drawBitAssembly(setupCanvas('bitAssembly', 1000, 300), state.assemblyStep);
+    drawBitBars(setupCanvas('bitBars', 520, 360));
+    drawBitHistogram(setupCanvas('bitHist', 520, 360));
+    /* 画布取正方形：64×64 个 MCU 各占一个正方形格子，整张图与画面本身同比例 */
+    drawBitAssembly(setupCanvas('bitAssembly', BIT_ASSEMBLY_SIZE, BIT_ASSEMBLY_SIZE), state.assemblyStep);
     refreshAssemblyReadout();
   }
 
@@ -4693,8 +5174,14 @@
     const context = target.ctx;
     const columns = Math.ceil(Math.sqrt(mcus.length));
     const rows = Math.ceil(mcus.length / columns);
-    const cellWidth = target.w / columns;
-    const cellHeight = (target.h - 24) / rows;
+    /* 一格 = 一个正方形：边长取「可用宽」与「可用高（扣掉底部读数）」里较小的那个，
+       再把网格整体水平居中，格子因此永远宽高相等，不会被画布形状拉扁。 */
+    const labelHeight = 22;
+    const cellSide = Math.max(1, Math.floor(Math.min(target.w, target.h - labelHeight) / Math.max(columns, rows)));
+    const gridWidth = cellSide * columns;
+    const gridHeight = cellSide * rows;
+    const originX = (target.w - gridWidth) / 2;
+    const originY = Math.max(0, (target.h - labelHeight - gridHeight) / 2);
     let maximum = 1;
     let minimum = Infinity;
     mcus.forEach(function (mcu) {
@@ -4707,6 +5194,8 @@
     /* 块位数高度集中（多数落在很窄的区间），直接按 0→最大值 上色会一片同色。
        改成按最小→最大拉伸，再用平方根抬一点中间调，块与块之间的差异才看得出来。 */
     const span = Math.max(1, maximum - minimum);
+    /* 格子之间的白缝随格子变大：小图时不至于把格子吃光，大图时也不至于黏成一整块 */
+    const inset = Math.max(0.45, Math.min(1.4, cellSide * 0.07));
     context.clearRect(0, 0, target.w, target.h);
     mcus.forEach(function (mcu, index) {
       const row = Math.floor(index / columns);
@@ -4716,12 +5205,14 @@
       const processed = step >= mcus.length || index < step;
       const level = Math.min(1, Math.sqrt(Math.max(0, bits - minimum) / span));
       const rgb = processed ? mixRGB([236, 242, 252], [29, 78, 216], level) : RGB.empty;
+      const x = originX + column * cellSide;
+      const y = originY + row * cellSide;
       context.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
-      context.fillRect(column * cellWidth + 0.6, row * cellHeight + 0.6, cellWidth - 1.2, cellHeight - 1.2);
+      context.fillRect(x + inset, y + inset, cellSide - inset * 2, cellSide - inset * 2);
       if (step > 0 && step < mcus.length && index === step - 1) {
         context.strokeStyle = '#c2410c';
-        context.lineWidth = 2.5;
-        context.strokeRect(column * cellWidth + 1, row * cellHeight + 1, cellWidth - 2, cellHeight - 2);
+        context.lineWidth = 2;
+        context.strokeRect(x + inset, y + inset, cellSide - inset * 2, cellSide - inset * 2);
       }
     });
     context.fillStyle = '#64748b';
@@ -4792,60 +5283,41 @@
     context.fillText(maximum + ' bit', target.w - 10, base + 16);
   }
 
-  /* 熵解码页：指标卡沿用其它页的 statBlock；逐符号对照表放主区；
-     位流片段做成和 07.3「编码后的数据」同一套浅底卡片，不再是一条裸位流。
-     读的顺序就是解码顺序：先看位流从哪来 → 再逐符号查表 → 最后看游标走到哪。 */
+  /* 熵解码页：静态展示整块的解码结果，不做逐步播放。
+     三段内容从上到下：指标卡 → 逐符号码字格 → 位流片段；
+     重复的进度条与汇总卡已去掉，幅值位统计并入码字格标题。 */
   function renderDecEntropyStep() {
     const block = encodedBlock();
     const decoded = decodedBlock();
     const same = sameSymbols(block.symbols, decoded.symbols);
-    const rows = block.symbols.map(function (symbol, index) {
-      const other = decoded.symbols[index] || {};
-      const matched = other.kind === symbol.kind && other.code === symbol.code &&
-        other.value === symbol.value;
-      return '<tr><td class="idx">' + (index + 1) + '</td>' +
-        '<td class="pair">' + symbolLabel(symbol) + ' <code>' + symbol.code + '</code></td>' +
-        '<td class="amp">' + (symbol.amplitude ? '<code>' + symbol.amplitude + '</code>' : '<span class="dim">—</span>') + '</td>' +
-        '<td class="pair">' + (other.kind ? symbolLabel(other) : '—') +
-        ' <code>' + (other.code || '—') + '</code></td>' +
-        '<td class="val' + (matched ? '' : ' warn') + '">' +
-        (other.value !== undefined ? String(other.value) : '—') + '</td></tr>';
-    }).join('');
-    /* 位流分段图：每个符号按位长占一段宽度，17 段拼起来就是本块整条位流，
-       比表格里的数字更直观——哪几个符号吃掉了大半比特一眼可见 */
-    const segments = block.symbols.map(function (symbol, index) {
-      const length = symbol.code.length + symbol.amplitude.length;
-      const kind = symbol.kind === 'DC' ? 'dc' : symbol.kind === 'EOB' ? 'eob' :
-        symbol.kind === 'ZRL' ? 'zrl' : 'ac';
-      const hint = '#' + (index + 1) + ' ' + symbolLabel(symbol) + '，' + length + ' bit';
-      return '<span class="seg ' + kind + '" style="flex:' + length + ' 1 0" title="' +
-        escapeHTML(hint) + '">' + (index + 1) + '</span>';
-    }).join('');
+    let ampBits = 0;
+    block.symbols.forEach(function (symbol) { ampBits += symbol.amplitude.length; });
+    const ampShare = Math.round(100 * ampBits / Math.max(1, block.bitEnd - block.bitStart));
     const start = Math.max(0, block.bitStart - 8);
     const end = Math.min(state.encoded.bitstream.length, block.bitEnd + 8);
     const snippet = state.encoded.bitstream.slice(start, end);
     const usedStart = block.bitStart - start;
     const usedEnd = block.bitEnd - start;
-    stage.innerHTML = '<div class="decode-stats">' + statBlock([
-      ['位范围', block.bitStart + '–' + block.bitEnd],
-      ['本块位数', (block.bitEnd - block.bitStart) + ' bit'],
-      ['符号数（编码 → 解码）', block.symbols.length + ' → ' + decoded.symbols.length],
-      ['一致性', '<span class="' + (same ? 'ok' : 'warn') + '">' + (same ? '逐位一致' : '不一致') + '</span>']
-    ]) + '</div>' +
-      '<div id="decodeWrap"><div class="scroll decode-scroll">' +
-      '<table class="data decode-table"><thead><tr>' +
-      '<th>#</th><th>编码（符号 码字）</th><th>幅值位</th><th>解码（符号 码字）</th>' +
-      '<th>还原值</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
-      '<div class="decode-timeline">' +
-      '<div class="decode-timeline-head"><b>本块位流的分段</b>' +
-      '<span>每段宽度 = 该符号占的位数，合计 ' + (block.bitEnd - block.bitStart) + ' bit</span></div>' +
-      '<div class="decode-timeline-track">' + segments + '</div>' +
-      '<p class="decode-legend">' +
-      '<span><i class="lg-dc"></i>DC</span>' +
-      '<span><i class="lg-ac"></i>AC</span>' +
-      '<span><i class="lg-eob"></i>EOB / ZRL</span>' +
-      '<span class="lg-tip">悬停任意一段看它是第几个符号、占几位</span></p>' +
+    stage.innerHTML = '<div class="decode-layout">' +
+      '<div class="decode-stats">' + statBlock([
+        ['位范围', block.bitStart + '–' + block.bitEnd],
+        ['本块位数', (block.bitEnd - block.bitStart) + ' bit'],
+        ['符号数（编码 → 解码）', block.symbols.length + ' → ' + decoded.symbols.length],
+        ['一致性', '<span class="' + (same ? 'ok' : 'warn') + '">' + (same ? '逐位一致' : '不一致') + '</span>']
+      ]) + '</div>' +
+      /* 逐符号读法：沿用 07.3 熵编码页的码字格——序号 + 符号名 + Huffman 码字 + 幅值位(=数值)。
+         幅值位统计并入标题，避免和上面的指标卡重复。 */
+      '<div class="decode-symbols">' +
+      '<div class="decode-symbols-head"><b>本块逐符号读法</b>' +
+      '<span>' + block.symbols.length + ' 个符号首尾相接 = ' + (block.bitEnd - block.bitStart) +
+      ' bit；其中幅值位 ' + ampBits + ' bit（' + ampShare + '%），按编码顺序从左到右读出</span></div>' +
+      '<div class="bits bitstream" id="decodeChips">' +
+      block.symbols.map(decodeChipHTML).join('') +
+      '</div>' +
+      '<p class="huff-legend">' +
+      '<span><i class="lg-c"></i>Huffman 码字</span>' +
+      '<span><i class="lg-a"></i>幅值位（= 还原出的系数）</span>' +
+      '<span class="lg-note">每格对应一个已解码符号，悬停可看完整位串</span></p>' +
       '</div>' +
       '<div class="decode-stream">' +
       '<div class="decode-stream-head"><b>位流片段</b>' +
@@ -4858,10 +5330,48 @@
       '<span><i class="lg-used"></i>本块已解码</span>' +
       '<span><i class="lg-cursor">▮</i>读游标</span>' +
       '<span><i class="lg-rest"></i>上下文（不属于本块）</span></p>' +
+      '<p class="note" id="decodeReadout"></p>' +
       '</div>' +
-      '<p class="note" id="decodeReadout"></p>';
-    /* 静态进页也把读数填上（动画里会继续更新），否则这里一直空着 */
-    updateDecodeReadout(block.symbols);
+      '</div>';
+    /* 本页静态展示完整解码结果：所有格子都已读出，位游标落在块尾 */
+    state.decodeStep = block.symbols.length;
+    updateDecodeReadout();
+    refreshDecodeBits();
+    refreshDecodeChips(true);
+  }
+
+  /* 熵解码页沿用 07.3 熵编码页的位流格：一格一个符号，竖排
+     「符号名 / 码字 / 幅值位(=系数值)」。static 进页时状态由 refreshDecodeChips 填。 */
+  function decodeChipHTML(symbol, index) {
+    const hasValue = symbol.kind === 'DC' || symbol.kind === 'AC';
+    const valueText = hasValue ? String(symbol.value) : '';
+    const order = typeof index === 'number' ? index + 1 : 1;
+    const title = '第 ' + order + ' 个符号 · ' + symbolLabel(symbol) + '：码字 ' + symbol.code +
+      (symbol.amplitude ? ' + 幅值位 ' + symbol.amplitude : '（无幅值位）') +
+      (hasValue ? ' = ' + valueText : '');
+    return '<span class="bitgroup" title="' + escapeHTML(title) + '">' +
+      '<span class="chip-head"><i class="chip-no">' + String(order).padStart(2, '0') + '</i>' +
+      '<em class="groupname">' + escapeHTML(symbolLabel(symbol)) + '</em></span>' +
+      '<i class="codebits">' + colorBits(symbol.code) + '</i>' +
+      (symbol.amplitude
+        ? '<span class="amprow"><i class="ampbits">' + colorBits(symbol.amplitude) + '</i>' +
+          (hasValue ? '<em class="ampvalue">= ' + escapeHTML(valueText) + '</em>' : '') + '</span>'
+        : '') +
+      '</span>';
+  }
+
+  /* 本页静态展示完整结果：所有格子统一标成已读；completed 参数只留作收尾语义。 */
+  function refreshDecodeChips(completed) {
+    const host = document.getElementById('decodeChips');
+    if (!host) return;
+    /* completed 用于动画收尾：最后一步也算「已读」，不再留橙框 */
+    const step = completed ? Infinity : state.decodeStep;
+    Array.prototype.forEach.call(host.querySelectorAll('.bitgroup'), function (chip, index) {
+      const order = index + 1;
+      chip.classList.toggle('done', step > 0 && order < step);
+      chip.classList.toggle('active', order === step);
+      chip.classList.toggle('pending', step > 0 && order > step);
+    });
   }
 
   function renderDequantStep() {
@@ -4948,6 +5458,8 @@
     return mse === 0 ? Infinity : 10 * Math.log10(255 * 255 / mse);
   }
 
+  /* 原 08.4 与原 09 合并为一页：第一遍解码结果是主视图，二次压缩收进可展开区。
+     “第一次重建”就是上面第二张图，不再重复画第三遍。 */
   function renderRecolorStep() {
     const stats = state.encoded.stats;
     stage.innerHTML = '<div class="grid-3">' +
@@ -4961,15 +5473,18 @@
         ['采样格式', state.subsampling === '444' ? '4:4:4' : state.subsampling === '422' ? '4:2:2' : '4:2:0', '色度分辨率'],
         ['质量因子 QF', state.Q, '控制量化步长'],
         ['块效应', state.Q < 30 ? '低 QF 通常更明显' : state.Q < 70 ? '可能有轻微块效应' : '通常较弱', '主观观察']
-      ]) + '</div>' + matlabReferenceHTML();
+      ]) + '</div>' + matlabReferenceHTML() + secondPassDetailsHTML();
     drawRGBInto(setupCanvas('finalOriginal', 440, 440), state.rgb, state.width, state.height);
     drawRGBInto(setupCanvas('finalDecoded', 440, 440), state.decoded.rgb, state.width, state.height);
     drawRGBDifference(setupCanvas('finalError', 440, 440));
+    if (state.encoded && state.decoded) {
+      const second = secondPassResult();
+      drawRGBInto(setupCanvas('secondAgain', 440, 440), second.decoded.rgb, state.width, state.height);
+      drawRGBDifference(setupCanvas('secondDiff', 440, 440), state.decoded.rgb, second.decoded.rgb, 20);
+    }
   }
 
-  /* 二次压缩：把第一次重建出来的 RGB 再走一遍编码→解码，看额外损失。
-     step 13 被 08.4 与 09 共用，若两页都画同一组图，用户会以为页面没切换；
-     09 页因此改成“第一次重建 / 再压一次 / 两次之差”的对照。 */
+  /* 二次压缩缓存：把第一次重建出的 RGB 再编解码一遍；键含图像/QF/采样，参数变了才重算。 */
   let secondPass = { key: '', data: null };
 
   function secondPassResult() {
@@ -4990,16 +5505,18 @@
     return data;
   }
 
-  function renderSecondPassStep() {
-    if (!state.encoded || !state.decoded) return;
+  function secondPassDetailsHTML() {
+    if (!state.encoded || !state.decoded) return '';
     const second = secondPassResult();
     const firstStats = state.encoded.stats;
     const againStats = second.encoded.stats;
     const drop = state.psnr - second.psnr;
-    stage.innerHTML = '<div class="grid-3">' +
-      figure('secondFirst', '第一次重建（当前设置）') +
-      figure('secondAgain', '再压一次后的重建') +
-      figure('secondDiff', '两次重建之差 ×20（越亮 = 差越大）') +
+    return '<details class="matlab-ref second-pass">' +
+      '<summary class="matlab-ref-head">二次压缩：再压一次会掉多少画质？' +
+      '<span>把第一次重建出的 RGB 用同样 QF / 采样再编解码一遍；第一次重建就是上方第二张图，这里只补两张对照（点此展开）</span></summary>' +
+      '<div class="second-pass-grid">' +
+        figure('secondAgain', '再压一次后的重建') +
+        figure('secondDiff', '两次重建之差 ×20（越亮 = 差越大）') +
       '</div><div style="margin-top:12px">' + metricCards([
         ['一次 PSNR', state.psnr.toFixed(2) + ' dB', '重建 vs 原始 RGB'],
         ['二次 PSNR', second.psnr.toFixed(2) + ' dB', '再压一次后 vs 原始 RGB'],
@@ -5009,10 +5526,8 @@
         ['熵位复用', (100 * againStats.totalBits / Math.max(1, firstStats.totalBits)).toFixed(2) + '%', '二次熵位数 / 一次']
       ]) + '</div>' +
       '<p class="note">再压一次几乎不再掉画质：第一次量化已把高频抹成 0，第二次量化作用在几乎相同的值上。' +
-      '剩下的额外损失来自颜色转换与取整的累积，在第三张图（放大 20 倍）里表现为块边界的细缝。</p>';
-    drawRGBInto(setupCanvas('secondFirst', 440, 440), state.decoded.rgb, state.width, state.height);
-    drawRGBInto(setupCanvas('secondAgain', 440, 440), second.decoded.rgb, state.width, state.height);
-    drawRGBDifference(setupCanvas('secondDiff', 440, 440), state.decoded.rgb, second.decoded.rgb, 20);
+      '剩下的额外损失来自颜色转换与取整的累积，在上面第二张图（放大 20 倍）里表现为块边界的细缝。</p>' +
+      '</details>';
   }
 
   function subsamplingText(mode) {
@@ -5077,7 +5592,9 @@
     { key: 'custom_uniform', label: '自编：等步长', color: '#c2410c', dash: [6, 4], marker: 'square' },
     { key: 'matlab_jpeg', label: 'MATLAB imwrite', color: '#0f766e', dash: [2, 3], marker: 'triangle' }
   ];
-  const MATLAB_IMAGE_COLORS = ['#1d4ed8', '#c2410c', '#15803d', '#9333ea'];
+  /* 三种采样格式的线型/颜色在 10.1 已定义，10.2–10.4 直接复用，
+     保证“同一种颜色 = 同一种采样”在整章里不变 */
+  const MATLAB_SUBSAMPLING_COLORS = ['#1d4ed8', '#c2410c', '#0f766e'];
 
   function matlabData() {
     const data = window.MATLAB_RESULTS;
@@ -5085,26 +5602,47 @@
     return data;
   }
 
-  function matlabImageLabel(data, index, short) {
-    const item = data && data.images ? data.images[index] : null;
-    if (!item) return '图 ' + (index + 1);
+  function matlabSubsamplingLabel(data, index, short) {
+    const item = data && data.subsamplings ? data.subsamplings[index] : null;
+    if (!item) return '采样 ' + (index + 1);
     return short ? item.short : item.label;
   }
 
-  /* 取一条实测序列，按横轴（bpp 或 Q）升序；缺值的点（imwrite 那一路没有熵位等）直接跳过 */
-  function matlabSeries(data, imageIndex, methodIndex, field, axis) {
+  function matlabSubsamplingStyle(data, index) {
+    const item = data && data.subsamplings ? data.subsamplings[index] : null;
+    const found = item ? MATLAB_SUBSAMPLING_STYLE.filter(function (style) {
+      return style.key === item.key;
+    })[0] : null;
+    return found || {
+      key: item ? item.key : String(index),
+      label: matlabSubsamplingLabel(data, index, false),
+      color: MATLAB_SUBSAMPLING_COLORS[index % MATLAB_SUBSAMPLING_COLORS.length],
+      dash: [], marker: 'circle'
+    };
+  }
+
+  /* 取一条实测序列：按采样 + 方法过滤，再按横轴（bpp 或 Q）升序；
+     imwrite 只在它真实使用的采样里出现，缺值字段（熵位/零系数）直接跳过 */
+  function matlabSeries(data, subsamplingIndex, methodIndex, field, axis) {
     return data.rows
       .filter(function (row) {
-        return row.image === imageIndex && row.method === methodIndex && row[field] !== null && row[field] !== undefined;
+        return row.subsampling === subsamplingIndex && row.method === methodIndex &&
+          row[field] !== null && row[field] !== undefined;
       })
       .sort(function (a, b) { return a[axis] - b[axis]; })
-      .map(function (row) { return [row[axis], row[field]]; });
+      .map(function (row) { return [row[axis], row[field], row.quality]; });
   }
 
   function matlabLegendHTML(items) {
     return '<div class="matlab-legend">' + items.map(function (item) {
       return '<span><i style="background:' + item.color + '"></i>' + escapeHTML(item.label) + '</span>';
     }).join('') + '</div>';
+  }
+
+  /* 10.2–10.4 每页只留一条结论条，位置固定在图表正下方；
+     结论里的数字由调用方按实测数据算好再传进来，不写死 */
+  function matlabTakeawayHTML(label, html) {
+    return '<p class="matlab-takeaway"><b>' + escapeHTML(label) + '</b><span>' + html + '</span></p>';
   }
 
   /* 刻度取整：让网格线落在 1/2/2.5/5 这类好读的数上 */
@@ -5401,24 +5939,25 @@
       data, narrow ? 1 : 2);
   }
 
-  /* 一张图里塞四个子图（四张输入图各一块），与 MATLAB 图 02 的四宫格对应；
-     窄屏改成单列堆叠，避免四个子图被压成邮票大小 */
+  /* 一种采样一块面板（共三块），三种量化策略放同一坐标系对照；
+     imwrite 只出现在它真实使用的采样面板里，没有数据就少画一条线，不补假点。
+     窄屏改成单列堆叠，避免三块面板被压成邮票大小 */
   function drawRatePanels(target, data, columns) {
     const ctx = target.ctx;
-    const cols = columns === 1 ? 1 : 2;
-    const rows = Math.ceil(data.images.length / cols);
+    const cols = columns === 1 ? 1 : 3;
+    const rows = Math.ceil(data.subsamplings.length / cols);
     const gap = { x: 52, y: 40 };
     const panelW = (target.w - 24 - gap.x * (cols - 1)) / cols;
     const panelH = (target.h - 10 - gap.y * (rows - 1)) / rows;
-    data.images.forEach(function (image, imageIndex) {
+    data.subsamplings.forEach(function (subsampling, subsamplingIndex) {
       const box = {
-        x: 12 + (imageIndex % cols) * (panelW + gap.x),
-        y: 6 + Math.floor(imageIndex / cols) * (panelH + gap.y),
+        x: 12 + (subsamplingIndex % cols) * (panelW + gap.x),
+        y: 6 + Math.floor(subsamplingIndex / cols) * (panelH + gap.y),
         w: panelW,
         h: panelH
       };
       const series = MATLAB_METHOD_STYLE.map(function (style, methodIndex) {
-        return { style: style, points: matlabSeries(data, imageIndex, methodIndex, 'psnr', 'bpp') };
+        return { style: style, points: matlabSeries(data, subsamplingIndex, methodIndex, 'psnr', 'bpp') };
       });
       let maxBpp = 0;
       let minPsnr = Infinity;
@@ -5436,13 +5975,13 @@
       const yMax = Math.ceil((maxPsnr + 1) / 5) * 5;
       const scales = drawChartFrame(ctx, box, {
         xMin: 0, xMax: xMax, yMin: yMin, yMax: yMax,
-        xTicks: niceTicks(0, xMax, cols === 1 ? 4 : 5),
+        xTicks: niceTicks(0, xMax, 5),
         yTicks: niceTicks(yMin, yMax, 4),
         xLabel: 'bpp（完整文件）',
         yLabel: 'PSNR / dB',
         xFormat: function (value) { return value < 10 ? value.toFixed(1) : String(Math.round(value)); },
         yFormat: function (value) { return String(Math.round(value)); },
-        title: image.label
+        title: subsampling.short
       });
       series.forEach(function (item) { drawLineSeries(ctx, item.points, scales, item.style); });
     });
@@ -5450,33 +5989,47 @@
 
   function renderMatlabRateStep() {
     const data = matlabData();
-    const caption = '四张 256×256 灰度图各自的率失真曲线：横轴完整文件 bpp，纵轴 PSNR / dB；' +
-      '每条线是同一方法 10 个实测点，只连线不平滑。';
+    const caption = '同一张 1024×1024 风景照片的 70 组实测：三块面板依次是 4:4:4 / 4:2:2 / 4:2:0，' +
+      '每块里的三条线是三种量化策略，10 个实测点只连线不平滑。';
+    let takeaway = '';
+    let note = '未找到 MATLAB 实测数据：请先在仓库根目录运行 <code>python tools/export_matlab_results.py</code> 生成 <code>web/matlab_results.js</code>。';
+    if (data) {
+      /* 边际收益用 4:4:4 自编加权的首两点与末两点现算，避免把 32 dB / 1.5 dB 写死 */
+      const curve = matlabSeries(data, 0, 0, 'psnr', 'bpp');
+      const first = curve[0];
+      const last = curve[curve.length - 1];
+      const lowSlope = (curve[1][1] - first[1]) / (curve[1][0] - first[0]);
+      const highSlope = (last[1] - curve[curve.length - 2][1]) / (last[0] - curve[curve.length - 2][0]);
+      takeaway = matlabTakeawayHTML('结论', '码率越高画质越好，但收益迅速衰减：4:4:4 从 ' +
+        first[0].toFixed(2) + ' bpp / ' + first[1].toFixed(1) + ' dB 到 ' +
+        last[0].toFixed(1) + ' bpp / ' + last[1].toFixed(1) + ' dB；低码率段每多 1 bpp 换 ' +
+        lowSlope.toFixed(1) + ' dB，高码率段只剩 ' + highSlope.toFixed(1) + ' dB。' +
+        '同一个 QF 下三种策略的码率不同，不能横比。');
+      note = '数据：<code>' + escapeHTML(data.source.measurements) + '</code>（' +
+        escapeHTML(data.environment || 'MATLAB R2024b') + '，' + escapeHTML(data.generatedAt || '') +
+        '），共 ' + data.rows.length + ' 组，前端只重绘不插值。';
+    }
     stage.innerHTML = matlabLegendHTML(MATLAB_METHOD_STYLE) +
       '<figure>' + canvasTag('matlabRateChart', caption) + '<figcaption>' + caption + '</figcaption></figure>' +
-      '<p class="note">' + (data
-        ? '数据来自 <code>' + escapeHTML(data.source.measurements) + '</code>（' + escapeHTML(data.environment || 'MATLAB R2024b') +
-          '，' + escapeHTML(data.generatedAt || '') + '），共 ' + data.rows.length + ' 组实测，由 MATLAB 导出后在前端重绘，未做插值。' +
-          '同一张风景照片的彩色 30 组在上一条 10.1，09 页还保留逐位对照表。'
-        : '未找到 MATLAB 实测数据：请先在仓库根目录运行 <code>python tools/export_matlab_results.py</code> 生成 <code>web/matlab_results.js</code>。') +
-      '</p>';
+      takeaway + '<p class="note">' + note + '</p>';
     if (!data) return;
     const narrow = SMALL_SCREEN;
-    drawRatePanels(setupCanvas('matlabRateChart', narrow ? 420 : 820, narrow ? 980 : 470), data, narrow ? 1 : 2);
+    drawRatePanels(setupCanvas('matlabRateChart', narrow ? 420 : 940, narrow ? 1000 : 430), data, narrow ? 1 : 3);
   }
 
-  /* 左：零系数比例，右：压缩比；横轴都是质量参数 Q，四张图各一条线。
+  /* 左：零系数比例，右：压缩比；横轴都是 QF，三条线分别是三种采样。
      窄屏同样改成上下两张，免得两块面板挤在一起 */
   function drawSparsityPanels(target, data, columns) {
     const ctx = target.ctx;
     const cols = columns === 1 ? 1 : 2;
+    const rows = Math.ceil(2 / cols);
     const gap = { x: 56, y: 44 };
     const panelW = (target.w - 24 - gap.x * (cols - 1)) / cols;
-    const panelH = (target.h - 8 - gap.y) / 2;
+    const panelH = (target.h - 8 - gap.y * (rows - 1)) / rows;
     const qualities = data.qualities;
     let maxRatio = 0;
-    data.images.forEach(function (image, imageIndex) {
-      matlabSeries(data, imageIndex, 0, 'compressionRatio', 'quality').forEach(function (point) {
+    data.subsamplings.forEach(function (subsampling, subsamplingIndex) {
+      matlabSeries(data, subsamplingIndex, 0, 'compressionRatio', 'quality').forEach(function (point) {
         if (point[1] > maxRatio) maxRatio = point[1];
       });
     });
@@ -5509,21 +6062,22 @@
         yMin: panel.yMin, yMax: panel.yMax,
         xTicks: [qualities[0], qualities[3], qualities[6], qualities[qualities.length - 1]],
         yTicks: panel.yTicks,
-        xLabel: '质量参数 Q（不是画质百分比）',
+        xLabel: '质量因子 QF（不是画质百分比）',
         yLabel: panel.yLabel,
         xFormat: function (value) { return String(Math.round(value)); },
         yFormat: panel.yFormat,
         title: panel.title
       });
-      data.images.forEach(function (image, imageIndex) {
-        const points = matlabSeries(data, imageIndex, 0, panel.field, 'quality');
+      data.subsamplings.forEach(function (subsampling, subsamplingIndex) {
+        const points = matlabSeries(data, subsamplingIndex, 0, panel.field, 'quality');
         if (panel.field === 'zeroFraction') {
           points.forEach(function (point) { point[1] = point[1] * 100; });
         }
+        const style = matlabSubsamplingStyle(data, subsamplingIndex);
         drawLineSeries(ctx, points, scales, {
-          color: MATLAB_IMAGE_COLORS[imageIndex % MATLAB_IMAGE_COLORS.length],
-          dash: [],
-          marker: 'circle'
+          color: style.color,
+          dash: style.dash,
+          marker: style.marker
         });
       });
     });
@@ -5531,16 +6085,37 @@
 
   function renderMatlabSparsityStep() {
     const data = matlabData();
-    const caption = '固定「自编：频率加权」量化表，四张图的零系数比例与完整文件压缩比随 Q 的变化。';
-    stage.innerHTML = matlabLegendHTML(data ? data.images.map(function (image, index) {
-      return { color: MATLAB_IMAGE_COLORS[index % MATLAB_IMAGE_COLORS.length], label: image.label };
+    const caption = '固定「自编：频率加权」量化表，同一张照片在三种采样下的零系数比例与完整文件压缩比。';
+    let takeaway = '';
+    let note = '未找到 MATLAB 实测数据：请先运行 <code>python tools/export_matlab_results.py</code>。';
+    if (data) {
+      /* 取最低 QF 那一档现算，避免把 98.8% / 73.8:1 等数字写死在页面里 */
+      const low = data.qualities[0];
+      const pick = function (index) {
+        return data.rows.filter(function (row) {
+          return row.subsampling === index && row.method === 0 && row.quality === low;
+        })[0];
+      };
+      const base = pick(0);
+      const lastIndex = data.subsamplings.length - 1;
+      const small = pick(lastIndex);
+      if (base && small) {
+        takeaway = matlabTakeawayHTML('结论', 'QF = ' + low + ' 时，' +
+          data.subsamplings[0].short + ' 与 ' + data.subsamplings[lastIndex].short +
+          ' 的零系数比例是 ' + (100 * base.zeroFraction).toFixed(1) + '% 与 ' +
+          (100 * small.zeroFraction).toFixed(1) + '%，几乎一样；完整文件压缩比却是 ' +
+          base.compressionRatio.toFixed(1) + ':1 与 ' + small.compressionRatio.toFixed(1) +
+          ':1。零多不等于文件小，压缩比必须用完整字节。');
+      }
+      note = '数据：' + data.subsamplings.length * data.qualities.length +
+        ' 点（3 采样 × 10 档，自编频率加权）；左图是熵编码前的中间量，右图才是写进文件的体积。';
+    }
+    stage.innerHTML = matlabLegendHTML(data ? data.subsamplings.map(function (subsampling, index) {
+      const style = matlabSubsamplingStyle(data, index);
+      return { color: style.color, label: subsampling.label };
     }) : []) +
       '<figure>' + canvasTag('matlabSparsityChart', caption) + '<figcaption>' + caption + '</figcaption></figure>' +
-      '<p class="note">' + (data
-        ? '同一批 40 个实测点（4 图 × 10 档 Q）换成两种口径：左边是熵编码前的中间量，右边才是真正写进文件的体积。' +
-          '两条曲线不同形，正说明<b>零系数比例不能代替压缩比</b>。'
-        : '未找到 MATLAB 实测数据：请先运行 <code>python tools/export_matlab_results.py</code>。') +
-      '</p>';
+      takeaway + '<p class="note">' + note + '</p>';
     if (!data) return;
     const narrow = SMALL_SCREEN;
     drawSparsityPanels(setupCanvas('matlabSparsityChart', narrow ? 420 : 900, narrow ? 700 : 330), data, narrow ? 1 : 2);
@@ -5603,23 +6178,24 @@
     ctx.restore();
   }
 
-  /* 宽屏：一张图里 4 组并排；窄屏：每张图一块面板上下堆叠，柱子才够宽 */
+  /* 一种采样一组柱：每组 = 该采样下的 4 个等码率点，柱高 = 加权 − 等步长的 PSNR 差。
+     宽屏三组并排；窄屏每种采样一块面板上下堆叠，柱子才够宽 */
   function drawMatchedBars(target, data, stacked) {
     const ctx = target.ctx;
     ctx.clearRect(0, 0, target.w, target.h);
-    const groups = data.images.map(function (image, imageIndex) {
+    const groups = data.subsamplings.map(function (subsampling, subsamplingIndex) {
       return {
-        imageIndex: imageIndex,
+        subsamplingIndex: subsamplingIndex,
         rows: data.matchedRate
-          .filter(function (row) { return row.image === imageIndex; })
+          .filter(function (row) { return row.subsampling === subsamplingIndex; })
           .sort(function (a, b) { return a.targetBpp - b.targetBpp; })
       };
     }).filter(function (group) { return group.rows.length; });
     if (!groups.length) return;
     if (!stacked) {
       drawBarGroups(ctx, { x: 6, y: 4, w: target.w - 12, h: target.h - 8 }, groups, {
-        xLabel: '每张图从左到右 4 根柱 = 它自己的 4 个目标 bpp（升序，数值见下表）',
-        xFormat: function (value) { return matlabImageLabel(data, groups[Math.floor(value)].imageIndex, true); }
+        xLabel: '每种采样从左到右 4 根柱 = 它自己的 4 个目标 bpp（升序，数值见下表）',
+        xFormat: function (value) { return matlabSubsamplingLabel(data, groups[Math.floor(value)].subsamplingIndex, true); }
       });
       return;
     }
@@ -5628,16 +6204,16 @@
     groups.forEach(function (group, index) {
       drawBarGroups(ctx, { x: 6, y: 4 + index * (panelH + gap), w: target.w - 12, h: panelH }, [group], {
         perBar: true,
-        xLabel: '该图的 4 个目标 bpp（升序）',
+        xLabel: '该采样的 4 个目标 bpp（升序）',
         xFormat: function (value) { return '#' + (Math.floor(value) + 1); },
-        title: matlabImageLabel(data, group.imageIndex, false)
+        title: matlabSubsamplingLabel(data, group.subsamplingIndex, false)
       });
     });
   }
 
   function matlabMatchedTableHTML(data) {
     const rows = data.matchedRate.map(function (row) {
-      return '<tr><td>' + escapeHTML(matlabImageLabel(data, row.image, false)) + '</td>' +
+      return '<tr><td>' + escapeHTML(matlabSubsamplingLabel(data, row.subsampling, false)) + '</td>' +
         '<td>' + row.targetBpp.toFixed(3) + '</td>' +
         '<td>' + row.weightedPsnr.toFixed(2) + '</td>' +
         '<td>' + row.uniformPsnr.toFixed(2) + '</td>' +
@@ -5645,8 +6221,8 @@
         (row.deltaPsnr > 0 ? '+' : '') + row.deltaPsnr.toFixed(2) + '</td></tr>';
     }).join('');
     return '<details class="matlab-ref">' +
-      '<summary class="matlab-ref-head">16 个插值点明细<span>同一目标 bpp 下两种量化表的 PSNR；Δ = 加权 − 等步长（点此展开）</span></summary>' +
-      '<div class="matlab-ref-scroll"><table><thead><tr><th>图像</th><th>目标 bpp</th>' +
+      '<summary class="matlab-ref-head">' + data.matchedRate.length + ' 个插值点明细<span>同一目标 bpp 下两种量化表的 PSNR；Δ = 加权 − 等步长（点此展开）</span></summary>' +
+      '<div class="matlab-ref-scroll"><table><thead><tr><th>采样</th><th>目标 bpp</th>' +
       '<th>加权 PSNR</th><th>等步长 PSNR</th><th>ΔPSNR</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<p class="matlab-ref-foot">数据来源：' + escapeHTML(data.source.matchedRate) +
       '；插值仅在两条曲线共同覆盖的区间内进行，不外推，插值点不是实测点。</p>' +
@@ -5656,13 +6232,22 @@
   function renderMatlabMatchedStep() {
     const data = matlabData();
     const caption = '等码率下的 PSNR 差：柱在零线以下表示该码率点「等步长」反而更好。';
+    let takeaway = '';
+    let note = '未找到 MATLAB 实测数据：请先运行 <code>python tools/export_matlab_results.py</code>。';
+    if (data) {
+      const values = data.matchedRate.map(function (row) { return row.deltaPsnr; });
+      const allNegative = values.every(function (value) { return value < 0; });
+      takeaway = matlabTakeawayHTML('结论', '三种采样、' + data.matchedRate.length + ' 个等码率点的 ΔPSNR ' +
+        (allNegative ? '全为负' : '有正有负') + '（' +
+        Math.min.apply(null, values).toFixed(2) + '～' + Math.max.apply(null, values).toFixed(2) + ' dB）：' +
+        (allNegative
+          ? '同一码率下 T.81 标准表反而输给等步长表，评价量化表必须换到同一码率坐标系。'
+          : '不能笼统说哪种量化表更好，要按码率点看。'));
+      note = '插值只在两条实测曲线的共同覆盖区间内进行，不外推；逐点数值见下表。';
+    }
     stage.innerHTML = '<figure>' + canvasTag('matlabMatchedChart', caption) +
       '<figcaption>' + caption + '</figcaption></figure>' +
-      '<p class="note">' + (data
-        ? '辣椒与文字图上等步长在四个目标码率上都更高（ΔPSNR 为负），平滑渐变图上加权略好（ΔPSNR 为 +0.19～+0.65 dB）。' +
-          '本轮数据不支持「频率加权总是更好」，报告里也是这么写的。'
-        : '未找到 MATLAB 实测数据：请先运行 <code>python tools/export_matlab_results.py</code>。') +
-      '</p>' + (data ? matlabMatchedTableHTML(data) : '');
+      takeaway + '<p class="note">' + note + '</p>' + (data ? matlabMatchedTableHTML(data) : '');
     if (!data) return;
     const narrow = SMALL_SCREEN;
     drawMatchedBars(setupCanvas('matlabMatchedChart', narrow ? 420 : 900, narrow ? 940 : 320), data, narrow);
@@ -6235,97 +6820,81 @@
     return data.solidFields;
   }
 
-  function renderFrequencySolidHTML(data) {
+  function renderFrequencySolidHTML(data, solidOnly) {
     const fields = frequencySolidFields(data);
     const regions = fields.regions;
     const boxSize = regions.low.size + '×' + regions.low.size;
-    return '<div class="hvs-block" id="hvsSolidBlock">' +
-      '<div class="hvs-head">立体看频率<span>z = 亮度 · 可拖动旋转</span>' +
-      '<div class="hvs-pager">' +
-      '<button type="button" data-freq-page="0" class="on">第 1 页 · 找区域</button>' +
-      '<button type="button" data-freq-page="1">第 2 页 · 立体对比</button>' +
-      '</div></div>' +
-      '<div class="hvs-page" data-freq-view="0">' +
-      '<div class="freq-region-row">' +
-      '<div class="freq-pane">' +
-      '<div class="freq-pane-head">① 找区域<span>自动挑出两块</span></div>' +
-      figure('hvsRegionMap', '<span style="color:#1d4ed8">蓝框</span>平缓 · <span style="color:#c2410c">橙框</span>细密') +
-      '</div>' +
-      '<div class="freq-pane">' +
-      '<div class="freq-pane-head">② 整体缩小<span>看谁先糊掉</span></div>' +
-      figure('hvsZoomCanvas', '整幅等比缩小') +
-      '</div>' +
-      '</div>' +
-      '<div class="freq-zoom-side">' +
-      '<button class="stage-btn" id="hvsZoomPlay">暂停</button>' +
-      '<p class="note" id="hvsZoomInfo">原图 ' + state.width + '×' + state.height +
-      ' → 显示 388×388 像素 · 橙框密纹就是高频。</p>' +
-      '<p class="note">山脊始终认得出。会自动放大回去，可随时暂停。</p>' +
-      '</div>' +
-      '</div>' +
-      '<div class="hvs-page" data-freq-view="1" hidden>' +
-      '<div class="freq-pairs">' +
-      '<div class="freq-pair">' +
-      figure('hvsCropLow', '蓝框裁剪 ' + boxSize + '<br><span class="ok">缓坡 · 相邻像素差 ' + fields.photoLow.activity.toFixed(1) + '</span>', 'hvs-crop') +
-      figure('hvsSolidPhotoLow', '蓝框三维高度场（z = 亮度）<br><span class="ok">峰谷差 ' + Math.round(fields.photoLow.peak) + '（0–255）</span>', 'hvs-solid') +
-      '</div>' +
-      '<div class="freq-pair">' +
-      figure('hvsCropHigh', '橙框裁剪 ' + boxSize + '<br><span class="warn">密锯齿 · 相邻像素差 ' + fields.photoHigh.activity.toFixed(1) + '</span>', 'hvs-crop') +
-      figure('hvsSolidPhotoHigh', '橙框三维高度场（z = 亮度）<br><span class="warn">峰谷差 ' + Math.round(fields.photoHigh.peak) + '（0–255）</span>', 'hvs-solid') +
-      '</div>' +
-      '</div>' +
-      '<div class="hvs-conclusion">同一把尺子（z 轴 0–255）：蓝框相邻像素差 ' +
-      fields.photoLow.activity.toFixed(1) + '，是缓坡；橙框 ' + fields.photoHigh.activity.toFixed(1) +
-      '，是密锯齿。人眼跟得上坡、跟不上锯齿——所以敢删高频</div>' +
-      '<div class="hvs-hint">按住任意一幅拖动，所有三维视角一起旋转</div>' +
-      '</div>' +
-      '</div>';
+    const head = solidOnly
+      ? '立体频率看板 · 低频 vs 高频'
+      : '立体频率看板<span>z = 亮度 · 可拖动旋转</span>';
+    let html = '<div class="hvs-block' + (solidOnly ? ' freq-solid-block' : '') + '" id="hvsSolidBlock">' +
+      '<div class="hvs-head">' + head + '</div>';
+
+    if (!solidOnly) {
+      html += '<div class="hvs-page">' +
+        '<div class="freq-region-row">' +
+        '<div class="freq-pane">' +
+        '<div class="freq-pane-head">① 找区域<span>自动挑出两块</span></div>' +
+        figure('hvsRegionMap', '<span style="color:#1d4ed8">蓝框</span>平缓 · <span style="color:#c2410c">橙框</span>细密') +
+        '</div>' +
+        '<div class="freq-pane">' +
+        '<div class="freq-pane-head">② 整体缩小<span>看谁先糊掉</span></div>' +
+        figure('hvsZoomCanvas', '整幅等比缩小') +
+        '</div>' +
+        '</div>' +
+        '<div class="freq-zoom-side">' +
+        '<button class="stage-btn" id="hvsZoomPlay">暂停</button>' +
+        '<p class="note" id="hvsZoomInfo">原图 ' + state.width + '×' + state.height +
+        ' → 显示 388×388 像素 · 橙框密纹就是高频。</p>' +
+        '<p class="note">山脊始终认得出。会自动放大回去，可随时暂停。</p>' +
+        '</div>' +
+        '</div>';
+    } else {
+      html += '<div class="hvs-page">' +
+        '<div class="freq-pairs">' +
+        '<div class="freq-pair">' +
+        figure('hvsCropLow', '蓝框裁剪 ' + boxSize + '<br><span class="ok">缓坡 · 相邻像素差 ' + fields.photoLow.activity.toFixed(1) + '</span>', 'hvs-crop') +
+        figure('hvsSolidPhotoLow', '蓝框三维高度场（z = 亮度）<br><span class="ok">峰谷差 ' + Math.round(fields.photoLow.peak) + '（0–255）</span>', 'hvs-solid') +
+        '</div>' +
+        '<div class="freq-pair">' +
+        figure('hvsCropHigh', '橙框裁剪 ' + boxSize + '<br><span class="warn">密锯齿 · 相邻像素差 ' + fields.photoHigh.activity.toFixed(1) + '</span>', 'hvs-crop') +
+        figure('hvsSolidPhotoHigh', '橙框三维高度场（z = 亮度）<br><span class="warn">峰谷差 ' + Math.round(fields.photoHigh.peak) + '（0–255）</span>', 'hvs-solid') +
+        '</div>' +
+        '</div>' +
+        '<div class="hvs-conclusion">同一把尺子（z 轴 0–255）：蓝框相邻像素差 ' +
+        fields.photoLow.activity.toFixed(1) + '，是缓坡；橙框 ' + fields.photoHigh.activity.toFixed(1) +
+        '，是密锯齿。人眼跟得上坡、跟不上锯齿——所以敢删高频</div>' +
+        '<div class="hvs-hint">按住任意一幅拖动，所有三维视角一起旋转</div>' +
+        '</div>';
+    }
+    return html + '</div>';
   }
 
-  /* 两页切换：只切显示，不重绘，滚动位置不跳 */
-  function bindFrequencyPager() {
-    const block = document.getElementById('hvsSolidBlock');
-    if (!block) return;
-    const buttons = block.querySelectorAll('.hvs-pager button');
-    const pages = block.querySelectorAll('.hvs-page');
-    Array.prototype.forEach.call(buttons, function (button) {
-      button.addEventListener('click', function () {
-        const page = button.getAttribute('data-freq-page');
-        Array.prototype.forEach.call(buttons, function (item) {
-          item.classList.toggle('on', item === button);
-        });
-        Array.prototype.forEach.call(pages, function (item) {
-          item.hidden = item.getAttribute('data-freq-view') !== page;
-        });
-        if (page === '1') {
-          stopZoomDemo();
-          const play = document.getElementById('hvsZoomPlay');
-          if (play) play.textContent = '继续缩小';
-        }
-        /* 第 2 页的画布在整页渲染时是 hidden（rect=0），一屏装下算法量不到它们，
-           只留下满尺寸。切页后必须补算一次，否则四张图会突然放大到满尺寸、页面
-           从一屏变成一屏半。窄屏下 fit 自身会直接返回，这里等同空操作。 */
-        fitStageToViewport();
-      });
-    });
-  }
-
-  function paintFrequencySolid(data) {
+  function paintFrequencySolid(data, solidOnly) {
     const fields = frequencySolidFields(data);
     hfieldRepaint = function () {
       drawHeightField3D(setupCanvas('hvsSolidPhotoLow', 400, 320), fields.photoLow);
       drawHeightField3D(setupCanvas('hvsSolidPhotoHigh', 400, 320), fields.photoHigh);
     };
     hfieldRepaint();
-    const mapW = 400;
-    drawRegionMapInto(setupCanvas('hvsRegionMap', mapW, mapW), state.rgb, data.planes.y, state.width, state.height, fields.regions);
+    if (!solidOnly) {
+      drawRegionMapInto(setupCanvas('hvsRegionMap', 400, 400), state.rgb, data.planes.y,
+        state.width, state.height, fields.regions);
+    }
     const low = fields.regions.low;
     const high = fields.regions.high;
     drawRGBCropInto(setupCanvas('hvsCropLow', 220, 220), state.rgb, state.width, state.height, low);
     drawRGBCropInto(setupCanvas('hvsCropHigh', 220, 220), state.rgb, state.width, state.height, high);
     ['hvsSolidPhotoLow', 'hvsSolidPhotoHigh']
       .forEach(function (id) { bindHeightFieldDrag(document.getElementById(id)); });
-    bindFrequencyPager();
+  }
+
+  /* 02 章第 2 页：独立的立体对比页，只保留四张图与结论，不做缩放动画 */
+  function renderFrequencySolidStep() {
+    stopZoomDemo();
+    const data = buildVisualData();
+    stage.innerHTML = renderFrequencySolidHTML(data, true);
+    paintFrequencySolid(data, true);
   }
 
   /* 整体缩小演示：整幅图等比例缩小再放大回去，画面中心与内容都不动。 */
@@ -6676,14 +7245,8 @@
     canvas.addEventListener('pointercancel', release);
   }
 
-  /* step 13 被两个节点共用：08.4 色度上采样收尾，和 09 二次压缩结果。
-     以前两者都进 renderRecolorStep，画面一模一样；这里按章节分流。 */
+  /* 08.4 与 09 已合并为一页：step 13 只渲染一次，二次压缩收在页内展开区。 */
   function renderRecolorTailStep() {
-    const entry = FLOW_ENTRIES[state.flowIndex];
-    if (entry && entry.chapter === 'result') {
-      renderSecondPassStep();
-      return;
-    }
     renderRecolorStep();
   }
 
@@ -6694,7 +7257,11 @@
     renderDequantStep, renderIdctStep, renderRecolorTailStep,
     renderVisualLumaStep, renderVisualFreqStep, renderOpeningStep,
     renderMatlabColorStep, renderMatlabRateStep, renderMatlabSparsityStep,
-    renderMatlabMatchedStep
+    renderMatlabMatchedStep,
+    /* 21：整幅图 RGB → YCbCr 三分量（流程里排在第 03 章第一页，见 FLOW_CHAPTERS） */
+    renderYccPlanesStep,
+    /* 22：02 章第 2 页，立体对比（原 02 页的分页内容独立成页） */
+    renderFrequencySolidStep
   ];
 
   /* ------------------------------------------------------------------ */
@@ -6736,7 +7303,6 @@
         else if (action === 'rle') startRleAnim();
         else if (action === 'bitwrite') startBitWriteAnim();
         else if (action === 'assembly') startAssemblyAnim();
-        else if (action === 'decode') startDecodeAnim();
         else if (action === 'idct') startIdctAnim();
         else if (action === 'tour') startBlockTour();
         else if (action === 'twopass') startDctTwoPass();
@@ -6839,7 +7405,9 @@
   }
 
   /* DCT 拆成 6 张演示页，每页共用 STEPS[4]，靠子步骤决定画哪一版 */
-  const DCT_VIEWS = ['shift', 'basisGrid', 'oneD', 'twopass', 'coeff', 'rebuild'];
+  /* 七页的顺序：① 移位 → ② 一行像素画在坐标系里（只画数据，不叠余弦）→ ③ 8 个余弦基
+     → ④ 一维拆解（叠加重建）→ ⑤ 行列分解 → ⑥ 二维系数 → ⑦ 叠加 = 原块 */
+  const DCT_VIEWS = ['shift', 'rowPlot', 'basisGrid', 'oneD', 'twopass', 'coeff', 'rebuild'];
 
   /* 当前教学节点对应的 DCT 子页；非 DCT 章节沿用系数页 */
   function currentDctView() {
@@ -6866,17 +7434,17 @@
     state.flowIndex = clamp(index, 0, FLOW_ENTRIES.length - 1);
     const entry = FLOW_ENTRIES[state.flowIndex];
     state.step = entry.step;
-    /* 二维系数页（DCT ⑤）从 (0,0) 起，进来就自动逐项巡览；其余页沿用“默认选 AC 最大项” */
-    state.selectedCoeff = entry.chapter === 'dct' && entry.subIndex === 4 && !ANIM.reduced ? 0 : -1;
+    /* 二维系数页（DCT ⑥）从 (0,0) 起，进来就自动逐项巡览；其余页沿用“默认选 AC 最大项” */
+    state.selectedCoeff = entry.chapter === 'dct' && entry.subIndex === 5 && !ANIM.reduced ? 0 : -1;
     state.dctView = currentDctView();
     state.dctRow = -1;
-    /* 一维页从 0 项开始（进入后自动叠一遍），其余 DCT 页停在「已完成」态 */
-    state.dctUseCount = entry.chapter === 'dct' && entry.subIndex === 2 ? 0 : 8;
+    /* 一维页（DCT ④）从 0 项开始（进入后自动叠一遍），其余 DCT 页停在「已完成」态 */
+    state.dctUseCount = entry.chapter === 'dct' && entry.subIndex === 3 ? 0 : 8;
     state.dctRowStep = 8;
     state.dctColStep = 8;
     state.dctPassStep = 16;
-    /* 重建页从 0 项起（进入后自动逐项叠加并循环）；减少动态偏好时直接停在「全部 64」 */
-    state.dctSumStep = entry.chapter === 'dct' && entry.subIndex === 5 && !ANIM.reduced ? 0 : 64;
+    /* 重建页（DCT ⑦）从 0 项起（进入后自动逐项叠加并循环）；减少动态偏好时直接停在「全部 64」 */
+    state.dctSumStep = entry.chapter === 'dct' && entry.subIndex === 6 && !ANIM.reduced ? 0 : 64;
     /* Zigzag 页从 0 格起（进入后自动循环扫描）；减少动态效果时保留完整序列 */
     state.zigStep = entry.chapter === 'packResult' && entry.subIndex === 0 && !ANIM.reduced ? 0 : 64;
     state.quantStep = 64;
@@ -6900,38 +7468,38 @@
       const left = current.offsetLeft - (stepper.clientWidth - current.offsetWidth) / 2;
       stepper.scrollLeft = Math.max(0, left);
     }
-    /* 行列分解页（DCT ④，subIndex 3）：进来就自动播一遍逐行 → 逐列的动图，之后循环 */
-    if (entry.chapter === 'dct' && entry.subIndex === 3 && !ANIM.reduced) {
+    /* 行列分解页（DCT ⑤，subIndex 4）：进来就自动播一遍逐行 → 逐列的动图，之后循环 */
+    if (entry.chapter === 'dct' && entry.subIndex === 4 && !ANIM.reduced) {
       state.dctPassHold = setTimeout(function () {
         state.dctPassHold = null;
         const current = FLOW_ENTRIES[state.flowIndex];
-        if (current && current.chapter === 'dct' && current.subIndex === 3) startDctTwoPass();
+        if (current && current.chapter === 'dct' && current.subIndex === 4) startDctTwoPass();
       }, 600);
     }
-    /* 一维分解页（DCT ③，subIndex 2）：从 0 项起自动叠一遍，
+    /* 一维分解页（DCT ④，subIndex 3）：从 0 项起自动叠一遍，
        比一进来就停在「8 项已完成」更能说明「逐项逼近」这件事 */
-    if (entry.chapter === 'dct' && entry.subIndex === 2 && !ANIM.reduced) {
+    if (entry.chapter === 'dct' && entry.subIndex === 3 && !ANIM.reduced) {
       state.dctBasisHold = setTimeout(function () {
         state.dctBasisHold = null;
         const current = FLOW_ENTRIES[state.flowIndex];
-        if (current && current.chapter === 'dct' && current.subIndex === 2) startBasis();
+        if (current && current.chapter === 'dct' && current.subIndex === 3) startBasis();
       }, 700);
     }
-    /* 逐项重建页（DCT ⑥，subIndex 5）：进来先清空，再匀速一项一拍叠加，满 64 项后循环 */
-    if (entry.chapter === 'dct' && entry.subIndex === 5 && !ANIM.reduced) {
+    /* 逐项重建页（DCT ⑦，subIndex 6）：进来先清空，再匀速一项一拍叠加，满 64 项后循环 */
+    if (entry.chapter === 'dct' && entry.subIndex === 6 && !ANIM.reduced) {
       state.dctSumHold = setTimeout(function () {
         state.dctSumHold = null;
         const current = FLOW_ENTRIES[state.flowIndex];
-        if (current && current.chapter === 'dct' && current.subIndex === 5) startBasisSum(0);
+        if (current && current.chapter === 'dct' && current.subIndex === 6) startBasisSum(0);
       }, 600);
     }
-    /* 二维系数页（DCT ⑤，subIndex 4）：进来先按 (u,v) 顺序逐项巡览，
+    /* 二维系数页（DCT ⑥，subIndex 5）：进来先按 (u,v) 顺序逐项巡览，
        一拍换一项，走完 64 项停一下再从头循环 */
-    if (entry.chapter === 'dct' && entry.subIndex === 4 && !ANIM.reduced) {
+    if (entry.chapter === 'dct' && entry.subIndex === 5 && !ANIM.reduced) {
       state.coeffTourHold = setTimeout(function () {
         state.coeffTourHold = null;
         const current = FLOW_ENTRIES[state.flowIndex];
-        if (current && current.chapter === 'dct' && current.subIndex === 4) startCoeffTour(0);
+        if (current && current.chapter === 'dct' && current.subIndex === 5) startCoeffTour(0);
       }, 600);
     }
     /* Zigzag 页（编码 07.1）：进来 600ms 后自动从 0 扫到 64，之后持续循环 */
@@ -6947,6 +7515,9 @@
   function render(options) {
     /* 整页重绘：画布会重新创建/重建位图，压窄记录作废，统一从满尺寸重新算一遍 */
     canvasFitWidth.clear();
+    /* 熵解码页没有画布，由独立的三段式布局把内容铺满演示台，不走默认的垂直居中 */
+    const stepId = STEPS[state.step] && STEPS[state.step].id;
+    stage.classList.toggle('decode-view', stepId === 'decEntropy');
     renderStepper();
     renderLeft();
     RENDERERS[state.step]();
@@ -7444,12 +8015,18 @@
     let tick = 0;
     state.assemblyTimer = setInterval(function () {
       tick += 1;
-      const next = Math.round(ANIM.progress('assembly', tick, ticks) * total);
+      const next = Math.min(total, Math.round(ANIM.progress('assembly', tick, ticks) * total));
       if (next !== state.assemblyStep) {
         state.assemblyStep = next;
         const canvas = document.getElementById('bitAssembly');
         if (canvas) {
-          drawBitAssembly({ canvas: canvas, ctx: canvas.getContext('2d'), w: 760, h: 240 }, state.assemblyStep);
+          /* 逻辑尺寸必须和 setupCanvas 里一致，否则动画期间格子会被画成非正方形 */
+          drawBitAssembly({
+            canvas: canvas,
+            ctx: canvas.getContext('2d'),
+            w: BIT_ASSEMBLY_SIZE,
+            h: BIT_ASSEMBLY_SIZE
+          }, state.assemblyStep);
         }
         refreshAssemblyReadout();
       }
@@ -7457,55 +8034,28 @@
         state.assemblyStep = total;
         clearInterval(state.assemblyTimer);
         state.assemblyTimer = null;
+        /* 收尾补一帧：把最后几格和读数都落到「全部拼完」的状态 */
+        const canvas = document.getElementById('bitAssembly');
+        if (canvas) {
+          drawBitAssembly({
+            canvas: canvas,
+            ctx: canvas.getContext('2d'),
+            w: BIT_ASSEMBLY_SIZE,
+            h: BIT_ASSEMBLY_SIZE
+          }, state.assemblyStep);
+        }
+        refreshAssemblyReadout();
       }
     }, ANIM.interval('assembly', ticks));
   }
 
-  function startDecodeAnim() {
-    if (state.step !== 10) return;
-    if (state.decodeTimer) clearInterval(state.decodeTimer);
-    state.decodeStep = 0;
-    const rows = document.querySelectorAll('#decodeWrap tbody tr');
-    Array.prototype.forEach.call(rows, function (row) { row.classList.remove('active', 'done'); });
-    updateDecodeReadout(rows);
-    refreshDecodeBits();
-    const total = Math.max(1, rows.length);
-    let tick = 0;
-    state.decodeTimer = setInterval(function () {
-      tick += 1;
-      const next = ANIM.progress('decode', tick, total);
-      if (next !== state.decodeStep) {
-        /* 与游程页同样的修法：next 是 1 基序号，高亮 rows[next-1] */
-        Array.prototype.forEach.call(rows, function (row, i) {
-          if (i < next - 1) { row.classList.remove('active'); row.classList.add('done'); }
-        });
-        if (next >= 1 && next <= rows.length) rows[next - 1].classList.add('active');
-        state.decodeStep = next;
-        updateDecodeReadout(rows);
-        refreshDecodeBits();
-      }
-      if (tick >= total) {
-        clearInterval(state.decodeTimer);
-        state.decodeTimer = null;
-      }
-    }, ANIM.interval('decode', total));
-  }
-
-  function updateDecodeReadout(rows) {
+  /* 静态页只在位片段下方留一句收口说明，重复的数字都在上方指标卡与码字格标题里 */
+  function updateDecodeReadout() {
     const readout = document.getElementById('decodeReadout');
     if (!readout) return;
     const block = encodedBlock();
-    let used = 0;
-    for (let i = 0; i < state.decodeStep && i < block.symbols.length; i++) {
-      used += block.symbols[i].code.length + block.symbols[i].amplitude.length;
-    }
-    if (state.decodeStep <= 0) {
-      /* 表格在窄屏会滚动，这里给出总数，读者知道还有多少行没看到 */
-      readout.textContent = '共 ' + rows.length + ' 个符号，从位位置 ' + block.bitStart + ' 开始逐位解码。';
-      return;
-    }
-    readout.textContent = '位位置 ' + (block.bitStart + used) + ' / ' + block.bitEnd +
-      ' · 已解码 ' + Math.min(state.decodeStep, rows.length) + '/' + rows.length + ' 个符号';
+    readout.textContent = '本块 ' + block.symbols.length + ' 个符号已按码表顺序读出，' +
+      '位游标落在块尾 ' + block.bitEnd + '。';
   }
 
   function refreshDecodeBits() {
@@ -7673,15 +8223,16 @@
        子步骤号（如 05.5）整体顺延，步骤条与面板标题里的编号始终稳定。 */
     { id: 'opening', short: '开篇', title: '开篇：JPEG 压缩的两条心理视觉原理', code: '00', steps: [16] },
     { id: 'luma', short: '亮度与色度', title: '亮度与色度：人眼更依赖亮度', code: '01', steps: [14] },
-    { id: 'freq', short: '低频与高频', title: '低频与高频：人眼靠低频认物体', code: '02', steps: [15] },
-    { id: 'input', short: '输入解码', title: '输入：从 JPG 解码出 RGB', code: '03', steps: [0] },
+    /* 02 章两页：02.1 找区域/缩小演示，02.2 把两块区域立起来做立体对比 */
+    { id: 'freq', short: '低频与高频', title: '低频与高频：人眼靠低频认物体', code: '02', steps: [15, 22] },
+    /* 03 章两页：先把整幅 RGB 图换成 Y/Cb/Cr 三张分量图，再进入 8×8 分块 */
+    { id: 'input', short: '输入解码', title: '输入：从 JPG 解码出 RGB，再换成 YCbCr 三分量', code: '03', steps: [21, 0] },
     { id: 'prep', short: '编码准备', title: '编码准备：YCbCr、色度采样与分块', code: '04', steps: [1, 2, 3] },
-    { id: 'dct', short: 'DCT', title: 'DCT：把 8×8 块换成 64 个余弦权重', code: '05', steps: [4, 4, 4, 4, 4, 4] },
+    { id: 'dct', short: 'DCT', title: 'DCT：把 8×8 块换成 64 个余弦权重', code: '05', steps: [4, 4, 4, 4, 4, 4, 4] },
     { id: 'quant', short: '量化', title: '量化：系数域中真正丢信息的一步', code: '06', steps: [5] },
     { id: 'packResult', short: '码流与结果', title: 'Zigzag/Huffman 与熵编码输出', code: '07', steps: [6, 7, 8, 9] },
     { id: 'decode', short: '解码原理', title: '解码：位流如何变回像素', code: '08', steps: [10, 11, 12, 13] },
-    { id: 'result', short: '二次压缩结果', title: '二次压缩结果', code: '09', steps: [13] },
-    /* MATLAB 批量实测：彩色页（风景照片，color_reference.js）排在最前，再是灰度 120 组的三页 */
+    /* MATLAB 批量实测：彩色页（风景照片，color_reference.js）排在最前，再是 70 组彩色实测的三页 */
     { id: 'matlab', short: 'MATLAB 实测', title: 'MATLAB 批量实验数据', code: '10', steps: [17, 18, 19, 20] }
   ];
 

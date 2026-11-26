@@ -1,15 +1,26 @@
-function measurements = run_color_experiment(imagePath, outputDirectory)
-%RUN_COLOR_EXPERIMENT 彩色三分量实验：10 个质量档 × 3 种采样，1024×1024。
-%   输入必须是 tools/export_page_photo.py 从 web/photos.js 导出的无损 PNG，
-%   否则与网页对不上：data/demo_photo_1024.jpg 的独立解码结果与页面像素
-%   平均差 1.54/通道、最大 23，量化系数会不同。
-%   输出 results/color_measurements.csv 与 results/color_reference.json，
-%   后者由 export_color_reference.m 转成 web/color_reference.js。
+function [measurements, reference] = run_color_experiment(imagePath, qualities, outputDirectory)
+%RUN_COLOR_EXPERIMENT 1024彩色图上的完整实验：3种量化策略 × 3种色度采样 × 10个质量档。
+%   MEASUREMENTS = RUN_COLOR_EXPERIMENT() 使用 data/demo_photo_1024_page.png、
+%   QF = [5 10 20 35 50 65 80 90 95 100] 与 results 输出目录。输入必须是
+%   tools/export_page_photo.py 从 web/photos.js 导出的无损 PNG，否则与网页对不上：
+%   data/demo_photo_1024.jpg 的独立解码结果与页面像素平均差 1.54/通道、最大 23。
+%
+%   实测矩阵：
+%     custom_jpeg    自编 T.81 频率加权表，4:4:4/4:2:2/4:2:0 × 10 = 30 组
+%     custom_uniform 自编等步长表（三分量共用标量步长），同上 30 组
+%     matlab_jpeg    MATLAB imwrite 基线，10 组；imwrite 不暴露采样因子，
+%                    实际采样从生成的 SOF0 段解析后写入 Subsampling，不预设结论。
+%
+%   输出 results/measurements.csv（全部组）与 results/color_reference.json
+%   （只含 custom_jpeg 的 30 组，供 web/color_reference.js 与前端逐位对照）。
 if nargin<1 || isempty(imagePath)
     projectRoot = fileparts(fileparts(mfilename('fullpath')));
     imagePath = fullfile(projectRoot,'data','demo_photo_1024_page.png');
 end
-if nargin<2
+if nargin<2 || isempty(qualities)
+    qualities = [5 10 20 35 50 65 80 90 95 100];
+end
+if nargin<3 || isempty(outputDirectory)
     outputDirectory = fullfile(fileparts(fileparts(mfilename('fullpath'))),'results');
 end
 if ~isfolder(outputDirectory)
@@ -18,116 +29,188 @@ end
 
 rgb = imread(imagePath);
 assert(isequal(size(rgb,3),3),'jpeg:Input','需要彩色PNG。');
-[height,width,~] = size(rgb);
+[imageHeight,imageWidth,~] = size(rgb);
 sourceSums = verify_page_pixels(imagePath,rgb);
+[~,imageName] = fileparts(imagePath);
 
-qualities = [5 10 20 35 50 65 80 90 95 100];
-subsamplings = {'420','422','444'};
 encodedDirectory = fullfile(outputDirectory,'encoded_color');
 if ~isfolder(encodedDirectory)
     mkdir(encodedDirectory);
 end
-[~,imageName] = fileparts(imagePath);
-records = struct([]);
-cases = struct([]);
+
+methods = struct( ...
+    'key',{'custom_jpeg','custom_uniform','matlab_jpeg'}, ...
+    'mode',{'jpeg','uniform',''}, ...
+    'label',{'自编：频率加权','自编：等步长','MATLAB imwrite'});
+subsamplings = {'444','422','420'};
+
+records = {};
 recordIndex = 0;
-caseIndex = 0;
-
-for subsamplingIndex = 1:numel(subsamplings)
-    mode = subsamplings{subsamplingIndex};
-    for quality = qualities
-        filename = fullfile(encodedDirectory,sprintf('%s_%s_q%03d.jpg',imageName,mode,quality));
-        encodeClock = tic;
-        info = jpeg_encode_color(rgb,filename,quality,mode);
-        encodeSeconds = toc(encodeClock);
-        decodeClock = tic;
-        [decoded,decodedInfo] = jpeg_decode_color(filename);
-        decodeSeconds = toc(decodeClock);
-        exact = double(isequal(info.quantized,decodedInfo.quantized));
-
-        % 独立解码器交叉验证：libjpeg 的整数 IDCT 与色度上采样与本项目不同，
-        % 因此只校验“能被通用解码器解出且差异有界”，不要求逐像素相同。
-        independent = imread(filename);
-        maxDecoderDifference = max(abs(double(independent(:))-double(decoded(:))));
-
-        errorImage = double(rgb)-double(decoded);
-        squared = sum(errorImage(:).^2);
-        mse = squared/numel(errorImage);
-        psnrValue = 10*log10(255^2/mse);
-        mae = mean(abs(errorImage(:)));
-
-        planes = page_planes(rgb);
-        yError = planes.y-decodedInfo.planes{1};
-        yMse = mean(yError(:).^2);
-        yPsnr = 10*log10(255^2/yMse);
-
-        listing = dir(filename);
-        recordIndex = recordIndex+1;
-        records(recordIndex).Image = imageName;
-        records(recordIndex).Width = width;
-        records(recordIndex).Height = height;
-        records(recordIndex).Subsampling = mode;
-        records(recordIndex).Quality = quality;
-        records(recordIndex).EntropyBits = info.entropyBits;
-        records(recordIndex).EntropyBytes = ceil(info.entropyBits/8);
-        records(recordIndex).PaddingBits = info.paddingBits;
-        records(recordIndex).StuffingBytes = info.stuffingBytes;
-        records(recordIndex).HeaderBytes = info.headerAndMarkerBytes;
-        records(recordIndex).FileBytes = listing.bytes;
-        records(recordIndex).BPP = 8*listing.bytes/(width*height);
-        records(recordIndex).CompressionRatio = width*height*3/listing.bytes;
-        records(recordIndex).ZeroFraction = info.zeroFraction;
-        records(recordIndex).MSE = mse;
-        records(recordIndex).PSNR = psnrValue;
-        records(recordIndex).MAE = mae;
-        records(recordIndex).YPSNR = yPsnr;
-        records(recordIndex).MaxImreadDifference = maxDecoderDifference;
-        records(recordIndex).ExactCoefficientRoundtrip = exact;
-        records(recordIndex).EncodeSeconds = encodeSeconds;
-        records(recordIndex).DecodeSeconds = decodeSeconds;
-
-        caseIndex = caseIndex+1;
-        cases(caseIndex).quality = quality;
-        cases(caseIndex).subsampling = mode;
-        cases(caseIndex).entropyBits = info.entropyBits;
-        cases(caseIndex).paddingBits = info.paddingBits;
-        cases(caseIndex).stuffingBytes = info.stuffingBytes;
-        cases(caseIndex).headerBytes = info.headerAndMarkerBytes;
-        cases(caseIndex).fileBytes = listing.bytes;
-        cases(caseIndex).zeroFraction = info.zeroFraction;
-        cases(caseIndex).mse = mse;
-        cases(caseIndex).psnr = psnrValue;
-        cases(caseIndex).yPsnr = yPsnr;
-        cases(caseIndex).compressionRatio = width*height*3/listing.bytes;
-        cases(caseIndex).bitsPerComponent = info.bitsPerComponent;
-
-        fprintf('%s Q%3d: bits=%7d file=%6d psnr=%6.3f zero=%.4f imreaddiff=%d (%.1fs)\n', ...
-            mode, quality, info.entropyBits, listing.bytes, psnrValue, info.zeroFraction, ...
-            maxDecoderDifference, encodeSeconds+decodeSeconds);
+referenceCases = {};
+referenceIndex = 0;
+for methodIndex = 1:numel(methods)
+    method = methods(methodIndex);
+    if strcmp(method.key,'matlab_jpeg')
+        for quality = qualities
+            filename = fullfile(encodedDirectory,sprintf('%s_%s_q%03d.jpg', ...
+                imageName,method.key,quality));
+            encodeClock = tic;
+            imwrite(rgb,filename,'jpg','Quality',quality);
+            encodeSeconds = toc(encodeClock);
+            scan = jpeg_read_scan_color(filename);
+            subsampling = detect_subsampling(scan);
+            decodeClock = tic;
+            reconstructed = imread(filename);
+            decodeSeconds = toc(decodeClock);
+            listing = dir(filename);
+            recordIndex = recordIndex+1;
+            records{recordIndex} = record_row(imageName,method.key,subsampling, ...
+                'parsed from SOF0',quality,imageWidth,imageHeight,rgb,reconstructed,listing.bytes, ...
+                NaN,NaN,NaN,NaN,NaN,NaN,encodeSeconds,decodeSeconds); %#ok<AGROW>
+            print_row(method.key,subsampling,quality,records{recordIndex});
+        end
+        continue;
+    end
+    for subsamplingIndex = 1:numel(subsamplings)
+        subsampling = subsamplings{subsamplingIndex};
+        for quality = qualities
+            filename = fullfile(encodedDirectory,sprintf('%s_%s_%s_q%03d.jpg', ...
+                imageName,method.key,subsampling,quality));
+            encodeClock = tic;
+            info = jpeg_encode_color(rgb,filename,quality,subsampling,method.mode);
+            encodeSeconds = toc(encodeClock);
+            decodeClock = tic;
+            [reconstructed,decodedInfo] = jpeg_decode_color(filename);
+            decodeSeconds = toc(decodeClock);
+            exact = double(isequal(info.quantized,decodedInfo.quantized));
+            assert(exact==1 && info.entropyBits==decodedInfo.consumedBits, ...
+                'jpeg:Roundtrip','量化系数或熵位数不能精确往返。');
+            independent = imread(filename);
+            maxDecoderDifference = max(abs(double(independent(:))-double(reconstructed(:))));
+            listing = dir(filename);
+            recordIndex = recordIndex+1;
+            records{recordIndex} = record_row(imageName,method.key,subsampling, ...
+                'declared',quality,imageWidth,imageHeight,rgb,reconstructed,listing.bytes, ...
+                info.zeroFraction,info.entropyBits,info.paddingBits,info.stuffingBytes, ...
+                info.headerAndMarkerBytes,maxDecoderDifference,encodeSeconds,decodeSeconds); %#ok<AGROW>
+            if strcmp(method.key,'custom_jpeg')
+                referenceIndex = referenceIndex+1;
+                referenceCases{referenceIndex} = reference_case(quality,subsampling, ...
+                    info,records{recordIndex}); %#ok<AGROW>
+            end
+            print_row(method.key,subsampling,quality,records{recordIndex});
+        end
     end
 end
 
-measurements = struct2table(records);
-writetable(measurements,fullfile(outputDirectory,'color_measurements.csv'));
+measurements = struct2table([records{:}]);
+writetable(measurements,fullfile(outputDirectory,'measurements.csv'));
 
 reference = struct();
 reference.version = '1.0';
-reference.source = basename(imagePath);
-reference.width = width;
-reference.height = height;
+reference.source = [imageName '.png'];
+reference.width = imageWidth;
+reference.height = imageHeight;
 reference.sourceChannelSums = sourceSums;
 reference.generatedBy = version;
 reference.generatedAt = datestr(now,'yyyy-mm-dd HH:MM:SS');
-reference.notes = ['与 web/jpeg_codec.js 逐位一致：熵位数、分量位数、零系数占比、PSNR 相同；' ...
-    '压缩比按 原始RGB字节/完整文件字节 计算；imread 仅作有界交叉验证。'];
+reference.notes = ['只收自编频率加权表的 30 组：与 web/jpeg_codec.js 逐位一致（熵位数、' ...
+    '分量位数、零系数占比、PSNR 相同）；压缩比按 原始RGB字节/完整文件字节 计算；' ...
+    'imread 仅作有界交叉验证。等步长与 imwrite 组见 measurements.csv。'];
 reference.qualities = qualities;
 reference.subsamplings = subsamplings;
-reference.cases = cases;
-fid = fopen(fullfile(outputDirectory,'color_reference.json'),'w','n','UTF-8');
-assert(fid>=0,'jpeg:FileOpen','无法写入 color_reference.json。');
-fprintf(fid,'%s',jsonencode(reference));
-fclose(fid);
-fprintf('已写出 %s 与 color_reference.json\n',fullfile(outputDirectory,'color_measurements.csv'));
+reference.cases = [referenceCases{:}];
+fileId = fopen(fullfile(outputDirectory,'color_reference.json'),'w','n','UTF-8');
+assert(fileId>=0,'jpeg:FileOpen','无法写入 color_reference.json。');
+fprintf(fileId,'%s',jsonencode(reference));
+fclose(fileId);
+fprintf('已写出 measurements.csv（%d 组）与 color_reference.json（%d 组）\n', ...
+    size(measurements,1),numel(referenceCases));
+end
+
+function record = record_row(imageName,method,subsampling,source,quality, ...
+    width,height,original,reconstructed,fileBytes,zeroFraction,entropyBits, ...
+    paddingBits,stuffingBytes,headerBytes,maxDecoderDifference,encodeSeconds,decodeSeconds)
+%RECORD_ROW 统一口径：压缩比分子为原始RGB字节，分母为完整文件字节。
+errorImage = double(original)-double(reconstructed);
+squared = sum(errorImage(:).^2);
+mse = squared/numel(errorImage);
+mae = mean(abs(errorImage(:)));
+if mse==0
+    psnrValue = Inf;
+else
+    psnrValue = 10*log10(255^2/mse);
+end
+planes = page_planes(original);
+decodedPlanes = page_planes(reconstructed);
+yError = planes.y-decodedPlanes.y;
+yMse = mean(yError(:).^2);
+if yMse==0
+    yPsnr = Inf;
+else
+    yPsnr = 10*log10(255^2/yMse);
+end
+record.Image = string(imageName);
+record.Method = string(method);
+record.Subsampling = string(subsampling);
+record.SubsamplingSource = string(source);
+record.Quality = quality;
+record.Width = width;
+record.Height = height;
+record.RawBytes = width*height*3;
+record.FileBytes = fileBytes;
+record.BPP = 8*fileBytes/(width*height);
+record.CompressionRatio = width*height*3/fileBytes;
+record.MSE = mse;
+record.PSNR = psnrValue;
+record.MAE = mae;
+record.YPSNR = yPsnr;
+record.ZeroFraction = zeroFraction;
+record.EntropyBits = entropyBits;
+record.PaddingBits = paddingBits;
+record.StuffingBytes = stuffingBytes;
+record.HeaderAndMarkerBytes = headerBytes;
+record.ExactCoefficientRoundtrip = NaN;
+record.MaxDecoderDifference = maxDecoderDifference;
+record.EncodeSeconds = encodeSeconds;
+record.DecodeSeconds = decodeSeconds;
+end
+
+function entry = reference_case(quality,subsampling,info,record)
+%REFERENCE_CASE 与旧版 color_reference.json 字段保持一致，供前端逐位断言。
+entry.quality = quality;
+entry.subsampling = subsampling;
+entry.entropyBits = info.entropyBits;
+entry.paddingBits = info.paddingBits;
+entry.stuffingBytes = info.stuffingBytes;
+entry.headerBytes = info.headerAndMarkerBytes;
+entry.fileBytes = record.FileBytes;
+entry.zeroFraction = info.zeroFraction;
+entry.mse = record.MSE;
+entry.psnr = record.PSNR;
+entry.yPsnr = record.YPSNR;
+entry.compressionRatio = record.CompressionRatio;
+entry.bitsPerComponent = info.bitsPerComponent;
+end
+
+function name = detect_subsampling(scan)
+%从SOF0段读实际采样因子，避免把imwrite的结果当成“声称”的4:2:0。
+h = scan.components(1).h;
+v = scan.components(1).v;
+if h==1 && v==1
+    name = '444';
+elseif h==2 && v==1
+    name = '422';
+elseif h==2 && v==2
+    name = '420';
+else
+    error('jpeg:Unsupported','未知的采样因子 %dx%d。',h,v);
+end
+end
+
+function print_row(method,subsampling,quality,record)
+fprintf('%-14s %-3s Q%3d: file=%7.0f psnr=%6.3f zero=%.3f\n', ...
+    method,subsampling,quality,record.FileBytes,record.PSNR,record.ZeroFraction);
 end
 
 function sums = verify_page_pixels(imagePath,rgb)
@@ -155,13 +238,12 @@ end
 
 function planes = page_planes(rgb)
 %与网页 rgbToYCbCr 相同的取整规则，仅用于统计 Y 通道 PSNR。
+if size(rgb,3)==1
+    planes.y = double(rgb);
+    return;
+end
 red = double(rgb(:,:,1));
 green = double(rgb(:,:,2));
 blue = double(rgb(:,:,3));
 planes.y = round(0.299*red+0.587*green+0.114*blue);
-end
-
-function name = basename(path)
-[~,name,extension] = fileparts(path);
-name = [name,extension];
 end

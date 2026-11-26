@@ -1,6 +1,8 @@
-function info = jpeg_encode_color(rgb, filename, quality, subsampling)
+function info = jpeg_encode_color(rgb, filename, quality, subsampling, mode)
 %JPEG_ENCODE_COLOR 手写三分量8位基线JPEG编码器（4:4:4 / 4:2:2 / 4:2:0）。
-%   INFO = JPEG_ENCODE_COLOR(RGB,FILENAME,QUALITY,SUBSAMPLING)。RGB 为
+%   INFO = JPEG_ENCODE_COLOR(RGB,FILENAME,QUALITY,SUBSAMPLING) 使用 T.81
+%   附录K的频率加权表；第五个参数 MODE='uniform' 时改用三分量共用的等步长
+%   表（仅用于本项目的量化策略对照实验）。RGB 为
 %   H×W×3 uint8；FILENAME 为空字符串时只算码流不落盘。逐条对齐
 %   web/jpeg_codec.js：BT.601 取整变换、色度 2×2（或1×2）平均下采样且
 %   越界复制边缘、按 MCU 交错（Y 各块 → Cb → Cr）、每分量独立 DC 预测、
@@ -9,8 +11,12 @@ validateattributes(rgb,{'uint8'},{'3d','nonempty'});
 assert(size(rgb,3)==3,'jpeg:Input','需要 H×W×3 的 uint8 彩色图。');
 validateattributes(quality,{'numeric'},{'scalar','integer','>=',1,'<=',100});
 subsampling = validatestring(subsampling,{'444','422','420'});
+if nargin<5 || isempty(mode)
+    mode = 'jpeg';
+end
+mode = validatestring(mode,{'jpeg','uniform'});
 tables = jpeg_tables();
-quantization = jpeg_quant_table_color(quality);
+quantization = jpeg_quant_table_color(quality,mode);
 [height,width,~] = size(rgb);
 
 planes = rgb_to_ycbcr(rgb);
@@ -157,6 +163,7 @@ info.rawBytes = height*width*3;
 info.compressionRatio = info.rawBytes/fileBytes;
 info.zeroFraction = zeroCount/coefficientCount;
 info.quantization = quantization;
+info.quantizationMode = mode;
 info.quantized = quantizedAll;
 info.blockComponent = blockComponent;
 info.blockColumn = blockColumn;

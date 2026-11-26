@@ -115,6 +115,7 @@
   .stage.compact .hvs-block{padding:10px 12px}
   .stage.compact .hvs-conclusion{padding:7px 10px;font-size:12px;margin-top:10px}
   .stage.compact .matlab-ref{padding:8px 12px;margin-top:10px}
+  .stage.compact .matlab-takeaway{font-size:11.5px;line-height:1.55;padding:8px 10px;margin-top:8px}
   .stage.compact .scroll{max-height:200px}
   /* 宽屏把指标卡铺成一行，省下的高度留给画布 */
   @media (min-width:1100px){
@@ -205,6 +206,25 @@
     .dct-cosine-formula{padding:12px 12px 10px}
     .dcf-note{white-space:normal;text-align:center}
   }
+  /* 05.2 只有一条空间域色带：单列铺满、格子压成矮条，
+     高度让给下面的坐标系；圆角与站内其它卡片一致 */
+  .dct-strips.single{grid-template-columns:minmax(0,1fr);max-width:100%;margin:0 0 10px}
+  .dct-strips.single .dct-strip-col{padding:9px 14px;gap:16px}
+  .dct-strips.single .dct-strip-head{flex:0 0 182px;gap:3px;padding-right:14px;
+    border-right:1px solid var(--border-soft);font-size:13px}
+  .dct-strips.single .dct-strip-head em{font-size:11px}
+  .dct-strips.single .dct-cells{gap:10px}
+  .dct-strips.single .dct-cells span{aspect-ratio:auto;height:clamp(40px,5.6vh,56px);border-radius:9px;
+    font:600 clamp(12.5px,1.55vh,15px)/1 Consolas,"Cascadia Mono",monospace;
+    box-shadow:inset 0 0 0 1px rgba(15,23,42,.07),0 1px 2px rgba(15,23,42,.05)}
+  /* 窄屏：表头改到色带上方，8 个格子才不至于被挤成细条 */
+  @media (max-width:760px){
+    .dct-strips.single .dct-strip-col{flex-direction:column;align-items:stretch;gap:7px;padding:9px 11px}
+    .dct-strips.single .dct-strip-head{flex:0 0 auto;flex-direction:row;align-items:baseline;gap:8px;
+      padding-right:0;border-right:0}
+    .dct-strips.single .dct-cells{gap:5px}
+    .dct-strips.single .dct-cells span{height:clamp(34px,4.6vh,46px);font-size:12px;border-radius:7px}
+  }
   @media (max-width:900px){.dct-strips{grid-template-columns:1fr}}
   /* 行列两遍页：底部“当前这一行/列”宽图与上方三张矩阵同宽，图注与读数已移除 */
   .dct-pass-row{margin-top:10px}
@@ -241,7 +261,68 @@
   .color-grid canvas{margin:0 auto}
   .color-grid figcaption{text-align:center}
   .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  /* 07.4 位流页：两张统计图 + 正方形 MCU 方块图同排；行高由正方形那张决定，两张图垂直居中 */
+  .bit-overview{align-items:center}
+  .bit-overview figure{justify-content:flex-start}
+  .bit-overview canvas{margin:0 auto}
   .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  /* 03.1 整幅图 RGB → YCbCr：三列网格。
+     第一列上排原图、下排 Y 分量（原图压在 Y 头上），公式横跨第二、三列，落在 Cb/Cr 上方 */
+  .ycc-board{display:grid;grid-template-columns:var(--ycc-cols,repeat(3,minmax(0,1fr)));
+    gap:14px 16px;justify-content:center;align-items:start;width:100%;margin:0 0 12px}
+  .ycc-board>.ycc-src{grid-area:1 / 1 / 2 / 2}
+  .ycc-board>.ycc-formula-card{grid-area:1 / 2 / 2 / 4}
+  .ycc-board>.ycc-y{grid-area:2 / 1 / 3 / 2}
+  .ycc-board>.ycc-cb{grid-area:2 / 2 / 3 / 3}
+  .ycc-board>.ycc-cr{grid-area:2 / 3 / 3 / 4}
+  .ycc-src canvas{width:100%}
+  /* 公式卡填满它跨到的那两列，内容垂直居中 */
+  .ycc-formula-card{margin:0;height:100%;display:flex;flex-direction:column;justify-content:center;
+    width:100%;max-width:100%;padding:12px 20px 10px;
+    background:linear-gradient(180deg,#fbfdff 0%,#f5f8fd 100%);border:1px solid var(--border-soft);
+    border-radius:12px;box-shadow:var(--shadow-sm)}
+  .ycc-eq{display:flex;align-items:center;justify-content:center;gap:10px 12px;flex-wrap:wrap;
+    font-family:"Cambria Math","Latin Modern Math",Cambria,Georgia,"Times New Roman",serif;color:#0f172a}
+  /* 方括号用左右边框画，高度自动跟随行数，不用挑字号 */
+  .ycc-mat{display:grid;align-items:center;justify-items:center;gap:1px 0;padding:5px 11px;
+    border-left:1.6px solid #94a3b8;border-right:1.6px solid #94a3b8;border-radius:3px}
+  .ycc-mat.vec{grid-template-columns:minmax(0,1fr)}
+  .ycc-mat.mat3{grid-template-columns:repeat(3,auto);gap:2px 12px;padding:5px 13px}
+  .ycc-mat i{font-style:normal;line-height:1.5;white-space:nowrap}
+  .ycc-mat .num{font:600 13.5px/1.5 Consolas,"Cascadia Mono",monospace;color:#1e293b;font-variant-numeric:tabular-nums}
+  .ycc-mat .var{font:italic 600 17px/1.5 "Cambria Math",Cambria,Georgia,serif;color:#1e3a8a;padding:0 2px}
+  .ycc-mat .var sub{font-size:.66em;line-height:0;vertical-align:-.24em;letter-spacing:0}
+  .ycc-mat.vec .num{color:#64748b}
+  .ycc-op{font-size:19px;color:#475569;padding:0 1px}
+  .ycc-formula-note{margin:9px 0 0;text-align:center;font-size:12px;line-height:1.65;color:#64748b}
+  .ycc-formula-note b{color:#334155}
+  .ycc-fig{display:flex;flex-direction:column;align-items:center;min-width:0}
+  .ycc-fig canvas{width:100%;margin:0 auto}
+  .ycc-fig figcaption{text-align:center;line-height:1.55}
+  .ycc-tag{display:inline-block;margin-right:6px;padding:0 6px;border-radius:4px;
+    font:700 11px/1.7 Consolas,"Cascadia Mono",monospace;color:#fff;background:#475569;vertical-align:1px}
+  .ycc-y .ycc-tag{background:#334155}
+  .ycc-cb .ycc-tag{background:#1d4ed8}
+  .ycc-cr .ycc-tag{background:#b91c1c}
+  @media (max-width:900px){
+    /* 窄屏放不下三列：整块改成单列，顺序依次是原图、公式、Y、Cb、Cr */
+    .ycc-board{--ycc-cols:minmax(0,1fr);gap:12px;max-width:460px}
+    .ycc-board>*{grid-area:auto!important}
+    .ycc-eq{gap:6px 8px}
+    .ycc-mat .num{font-size:12px}
+    .ycc-mat.mat3{gap:2px 8px;padding:4px 8px}
+    .ycc-mat .var{font-size:15px}
+  }
+  /* 矮屏（投影常见 1280×720 / 1366×768）：公式卡只剩两列宽，字号与列间距同步收一档才排得下 */
+  @media (max-height:820px){
+    .ycc-mat{padding:4px 8px}
+    .ycc-mat.mat3{gap:2px 7px;padding:4px 9px}
+    .ycc-mat .num{font-size:11.5px}
+    .ycc-mat .var{font-size:14.5px}
+    .ycc-op{font-size:16px}
+    .ycc-eq{gap:7px 8px}
+    .ycc-formula-note{font-size:11.5px}
+  }
   /* 量化页：左边四宫格（F → q → 商 → Fq），右边一条 QF 拉杆；
      算式区仍挂在下方说明面板里，滚动才看见 */
   .quant-layout{display:flex;align-items:center;justify-content:center;gap:18px;width:100%;margin:0 auto}
@@ -308,6 +389,11 @@
   .matlab-ref-head{font-size:13px;font-weight:600;color:var(--text);margin-bottom:0}
   .matlab-ref-head span{display:block;font-weight:400;color:var(--muted);font-size:11.5px;margin-top:4px;line-height:1.5}
   .matlab-ref-live{font-size:12px;color:#1e3a8a;background:var(--blue-soft);border-left:3px solid var(--blue);border-radius:0 8px 8px 0;padding:8px 10px;margin:0 0 10px;line-height:1.7}
+  /* 10.2–10.4 的结论条：一页只留一句结论，数字由 JS 按实测数据现算，避免写死 */
+  .matlab-takeaway{display:flex;align-items:flex-start;gap:9px;margin:10px 0 0;padding:9px 12px;border-left:3px solid #0f766e;border-radius:0 9px 9px 0;background:#f0fdfa;color:#134e4a;font-size:12.5px;line-height:1.65}
+  .matlab-takeaway b{flex:none;font-size:11.5px;letter-spacing:.02em;color:#0f766e;padding-top:1px}
+  /* 08.4 里合并进来的二次压缩：两图并排即可，不再单独占一整页 */
+  .second-pass-grid{display:grid;grid-template-columns:repeat(2,minmax(0,260px));gap:12px;justify-content:center;margin-top:10px}
   .matlab-ref-scroll{max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:8px}
   .matlab-ref table{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums}
   .matlab-ref th,.matlab-ref td{padding:5px 8px;text-align:right;border-bottom:1px solid #eef2f7;white-space:nowrap}
@@ -426,59 +512,54 @@
   .huff-legend .lg-g i{width:0;height:12px;border-left:1px dashed currentColor;border-radius:0;background:none}
   .huff-legend .lg-note{color:#8794a8}
   .huff-stream .note{margin-top:5px;font-size:12px}
-  /* 熵解码页：指标卡 / 对照表 / 位流分段图 / 位流片段四块同宽（1360）居中，
-     左右边缘收在一起，表格行高收到 32px 左右，不留大片空行。
-     演示台是 flex 列容器，子项带 margin:auto 时会收缩成内容宽度，
-     所以这里必须显式写 width:100%，否则四块会各自缩成一条。 */
-  .decode-stats,.decode-scroll,.decode-timeline,.decode-stream,#decodeReadout{width:100%}
-  .decode-stats{max-width:1360px;margin:0 auto}
-  .decode-scroll{max-height:clamp(240px,62vh,668px);max-width:1360px;margin:0 auto}
-  /* 紧凑模式下别把表格压到通用的 200px：这页表格就是主内容，
-     留 40vh 还能看十几行，剩下的高度够位流图与读数 */
-  .stage.compact .decode-scroll{max-height:clamp(220px,40vh,360px)}
-  .decode-table{table-layout:fixed;width:100%;max-width:1360px;margin:0 auto}
-  .decode-table th:first-child,.decode-table td.idx{width:46px;text-align:right;color:#94a3b8;font-size:11.5px}
-  .decode-table th:nth-child(2),.decode-table th:nth-child(4){width:29%}
-  .decode-table th:nth-child(3){width:14%}
-  .decode-table th:nth-child(5){width:16%;text-align:right}
-  /* 带上 table 前缀：`table.data td` 的特异度是 0,1,2，
-     只写 .decode-table td 压不住原有的 7px 单元格内边距 */
-  table.decode-table td{padding:4px 10px;line-height:1.45}
-  table.decode-table th{padding:6px 10px}
-  .decode-table td.val{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
-  .decode-table td.val.warn{color:var(--red)}
-  .decode-table code{font-size:12px;letter-spacing:.04em}
-  /* 幅值位沿用 07.3 位流格的黄色标记，两页对「哪些位是数值」的视觉语言一致 */
-  .decode-table td.amp code{color:#b45309;background:#fff6e2;border-radius:3px;padding:1px 5px}
-  .decode-table .dim{color:#cbd5e1}
-  /* 本块位流的分段图：一段一个符号，宽度正比于该符号的位数 */
-  .decode-timeline{max-width:1360px;margin:10px auto 0;padding:8px 15px 9px;
-    border:1px solid var(--border-soft);border-radius:11px;background:#fbfdff}
-  .decode-timeline-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px}
-  .decode-timeline-head b{font-size:13px;color:var(--text)}
-  .decode-timeline-head span{font-size:11.5px;color:var(--muted)}
-  .decode-timeline-track{display:flex;gap:2px;height:30px;align-items:stretch}
-  .decode-timeline-track .seg{display:flex;align-items:center;justify-content:center;
-    min-width:16px;border-radius:4px;overflow:hidden;cursor:default;
-    font:700 11px/1 Consolas,monospace;color:#fff;transition:filter var(--dur-fast) var(--ease-standard)}
-  .decode-timeline-track .seg:hover{filter:brightness(1.15)}
-  .decode-timeline-track .seg.dc{background:#1d4ed8}
-  .decode-timeline-track .seg.ac{background:#c2410c}
-  .decode-timeline-track .seg.eob{background:#475569}
-  .decode-timeline-track .seg.zrl{background:#7c3aed}
-  .decode-legend .lg-dc,.decode-legend .lg-ac,.decode-legend .lg-eob{width:12px;height:12px;border-radius:3px}
-  .decode-legend .lg-dc{background:#1d4ed8}
-  .decode-legend .lg-ac{background:#c2410c}
-  .decode-legend .lg-eob{background:#475569}
+  /* 熵解码页：三段式铺满演示台——顶部指标、中部码字格、底部位流片段。
+     重复的进度条与汇总卡已移除；没有画布可缩，所以不走演示台默认的垂直居中。 */
+  .stage.decode-view>:first-child{margin-top:0}
+  .stage.decode-view>:last-child{margin-bottom:0}
+  .decode-layout{display:flex;flex-direction:column;justify-content:space-between;gap:14px;width:100%;flex:1;min-height:0}
+  .decode-stats,.decode-symbols,.decode-stream,#decodeReadout{width:100%}
+  .decode-stats,.decode-symbols,.decode-stream{max-width:1360px;margin-left:auto;margin-right:auto}
+  .decode-stats{margin-top:0}
+  /* 逐符号读法：沿用 07.3 熵编码的码字格，静态展示整块解码结果 */
+  .decode-symbols{margin-top:0;padding:12px 15px 13px;border:1px solid var(--border-soft);
+    border-radius:12px;background:#fbfdff;box-shadow:var(--shadow-sm)}
+  .decode-symbols-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:9px}
+  .decode-symbols-head b{font-size:14px;color:var(--text)}
+  .decode-symbols-head span{font-size:12px;color:var(--muted)}
+  /* .stage>.bits.bitstream 那条只作用于直系节点，这里是卡片内的位流格，单独铺开 */
+  .decode-symbols .bits{display:flex;flex-wrap:wrap;gap:10px;padding:9px 6px 5px;margin:0;
+    max-height:none;word-break:normal;background:transparent;border:0}
+  .decode-symbols .bitstream .bitgroup{min-width:80px;padding:7px 11px 6px;border-radius:9px;
+    background:linear-gradient(180deg,#fff,#f5f8ff);box-shadow:var(--shadow-sm)}
+  .decode-symbols .chip-head{display:flex;align-items:center;justify-content:center;gap:6px;width:100%}
+  .decode-symbols .chip-no{font:700 10px/1 Consolas,"Cascadia Mono",monospace;color:#94a3b8}
+  .decode-symbols .groupname{font-size:12px;color:#475569}
+  .decode-symbols .codebits,.decode-symbols .ampbits{font-size:16px;letter-spacing:.7px}
+  .decode-symbols .ampvalue{font-size:12.5px}
+  .decode-symbols .bitgroup{transition:background-color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),opacity var(--dur-fast) var(--ease-standard),
+    transform var(--dur-fast) var(--ease-standard),box-shadow var(--dur-fast) var(--ease-standard)}
+  .decode-symbols .bitgroup.done{background:#eef4ff;border-color:#cbdaf5}
+  .decode-symbols .bitgroup.done .chip-no{color:#1d4ed8}
+  .decode-symbols .bitgroup.active{background:#fff7ed;border-color:#fb923c;transform:translateY(-2px);
+    box-shadow:0 0 0 2px rgba(251,146,60,.26),0 6px 14px rgba(194,65,12,.16)}
+  .decode-symbols .bitgroup.active .chip-no{color:#c2410c}
+  .decode-symbols .bitgroup.pending{opacity:.5;background:#fff;border-color:#e6edf6}
   .decode-legend .lg-tip{color:#8794a8}
-  .decode-stream{max-width:1360px;margin:10px auto 0;padding:9px 15px 10px;border:1px solid var(--border-soft);border-radius:11px;background:#fbfdff}
-  #decodeReadout{max-width:1360px;margin:6px auto 0}
+  /* 位流片段贴底，和中部的码字格形成“从上到下”的解码动线；读数并入卡片做收口 */
+  .decode-stream{max-width:1360px;margin:0 auto;padding:11px 15px 12px;
+    border:1px solid var(--border-soft);border-radius:12px;background:#fbfdff;box-shadow:var(--shadow-sm)}
+  #decodeReadout{max-width:none;margin:7px 0 0;font-size:12.5px;font-weight:600;color:#475569}
   .decode-stream-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px}
-  .decode-stream-head b{font-size:13px;color:var(--text)}
+  .decode-stream-head b{font-size:14px;color:var(--text)}
   .decode-stream-head span{font-size:11.5px;color:var(--muted)}
   /* 位流已经在这张卡片里，里面的 .bits 不再重复画一层边框与底色 */
   .decode-stream .bits{border:0;background:transparent;padding:0;max-height:none;
-    font-size:14.5px;line-height:1.9;letter-spacing:.08em}
+    font-size:15px;line-height:2;letter-spacing:.1em}
+  @media (max-width:700px){
+    .decode-layout{justify-content:flex-start;gap:12px}
+    .decode-stream{margin:0 auto}
+  }
   .decode-legend{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;margin:6px 0 0;
     font-size:11.5px;color:var(--muted)}
   .decode-legend span{display:inline-flex;align-items:center;gap:5px}
@@ -584,14 +665,14 @@
   /* 矮屏（1366×768、1280×720 投影）：两幅对比图收一档，整块不用滚动也能看完 */
   @media (max-height:820px){
     .stage{padding:16px 20px}
+    /* 独立的立体对比页少一圈留白，保证 1366×768 也整页装下 */
+    .freq-solid-block{padding:10px 16px}
     .freq-region-row{max-width:960px}
     .freq-pane figure{max-width:420px}
     .freq-zoom-side{max-width:960px;padding:8px 12px}
     /* Huffman 页多了「编码后的数据」一条，矮屏把标准表与这一条一起收紧，
        换出它的高度，仍保证整页一屏装下（表图随时可以点开放大） */
     .t81-tables img{max-height:clamp(240px,32vh,420px)}
-    /* 熵解码页的对照表也按矮屏收一档，别让整页顶出去 */
-    .decode-scroll{max-height:clamp(220px,42vh,420px)}
     .huff-stream{padding:6px 10px 7px;margin-top:9px}
     .huff-stream-head{font-size:11.5px;margin-bottom:3px}
     .huff-bitline{font-size:12.5px;line-height:1.6}
@@ -622,6 +703,7 @@
   }
   @media (max-width:700px){
     .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
+    .second-pass-grid{grid-template-columns:minmax(0,100%)}
     .quant-grid{grid-template-columns:1fr}
     .dct-2d-top,.dct-shift-row,.dct-rebuild-row4{grid-template-columns:1fr}
     .freq-region-row,.freq-pairs{grid-template-columns:1fr}

@@ -216,6 +216,7 @@ function findFlowIndex(predicate) {
 
 const expectedByStepId = {
   opening: ['openingRules'],
+  yccPlanes: ['yccSource', 'yccY', 'yccCb', 'yccCr'],
   source: ['sourceCanvas', 'blockPreview'],
   color: ['colorRGB', 'colorY', 'colorCb', 'colorCr'],
   subsample: ['subCbOriginal', 'subCrOriginal', 'subCbSmall', 'subCrSmall', 'subCropBefore', 'subCropAfter'],
@@ -226,13 +227,14 @@ const expectedByStepId = {
   huffTable: ['t81DcTable', 't81AcTable', 't81AcTable2'],
   huffman: ['huffBits', 't81DcTable', 't81AcTable', 't81AcTable2'],
   bitstream: ['bitBars', 'bitHist', 'bitAssembly'],
-  decEntropy: ['decodeWrap', 'decodeBitStrip'],
+  decEntropy: ['decodeBitStrip'],
   dequant: ['dqOriginal', 'dqQuantized', 'dqTable', 'dqRestored'],
   idct: ['idctOriginal', 'idctRestored', 'idctError'],
-  recolor: ['finalOriginal', 'finalDecoded', 'finalError'],
+  recolor: ['finalOriginal', 'finalDecoded', 'finalError', 'secondAgain', 'secondDiff'],
   visualLuma: ['hvsLumaOrig', 'hvsLumaY', 'hvsLumaColor'],
   visualLumaCompare: ['hvsOriginal', 'hvsLowChroma', 'hvsLowLuma'],
-  visualFreq: ['hvsRegionMap', 'hvsCropLow', 'hvsCropHigh', 'hvsSolidPhotoLow', 'hvsSolidPhotoHigh', 'hvsZoomCanvas', 'hvsZoomPlay', 'hvsZoomInfo'],
+  visualFreq: ['hvsRegionMap', 'hvsZoomCanvas', 'hvsZoomPlay', 'hvsZoomInfo'],
+  freqSolid: ['hvsCropLow', 'hvsCropHigh', 'hvsSolidPhotoLow', 'hvsSolidPhotoHigh'],
   matlabColor: ['matlabColorChart'],
   matlabRate: ['matlabRateChart'],
   matlabSparsity: ['matlabSparsityChart'],
@@ -241,6 +243,7 @@ const expectedByStepId = {
 
 const expectedByDctView = {
   shift: ['shiftOriginal', 'shiftCentered', 'shiftReadout'],
+  rowPlot: ['dctRowPlot'],
   basisGrid: ['dctCosineGrid'],
   oneD: ['dctRowBasis', 'dctRowCoeff'],
   twopass: ['passOriginal', 'passTemp', 'passFinal', 'passRow'],
@@ -255,9 +258,6 @@ function expectedIdsFor(entry) {
     assert.ok(ids, '未定义的 DCT 视图：' + view);
     return ids;
   }
-  /* 09 二次压缩结果复用 step 13，但演示台换成「一次重建 / 二次重建 / 两次之差」，
-     不再和 08.4 共用 recolor 的三张画布 */
-  if (entry.chapter === 'result') return ['secondFirst', 'secondAgain', 'secondDiff'];
   const stepId = page.STEPS[entry.step].id;
   const ids = expectedByStepId[stepId];
   assert.ok(ids, '未定义的步骤：' + stepId);
@@ -532,17 +532,20 @@ test('Huffman 页合并展示位流与 T.81 标准表，独立的 Huffman 表节
 test('MATLAB 实测节点：四页图表均由导出的实测数据驱动', function () {
   const data = sandbox.window.MATLAB_RESULTS;
   assert.ok(data, '缺少 web/matlab_results.js');
-  assert.strictEqual(data.rows.length, 120, '实测组数应为 120');
-  assert.strictEqual(data.images.length, 4, '应有 4 张输入图');
-  assert.strictEqual(data.qualities.length, 10, '应有 10 档 Q');
-  assert.strictEqual(data.matchedRate.length, 16, '应有 16 个等码率插值点');
+  assert.strictEqual(data.rows.length, 70, '实测组数应为 70（60 自编 + 10 imwrite）');
+  assert.strictEqual(data.image.key, 'demo_photo_1024_page', '输入应为 1024 风景照片');
+  assert.strictEqual(data.subsamplings.length, 3, '应有 3 种采样');
+  assert.strictEqual(data.qualities.length, 10, '应有 10 档 QF');
+  assert.strictEqual(data.matchedRate.length, 12, '应有 12 个等码率插值点');
   /* 前端按方法下标配线型（0 蓝实线 / 1 橙虚线 / 2 青点线），顺序必须与导出脚本一致。
      sandbox 里的数组原型与宿主不同，deepStrictEqual 会因原型差异失败，改成比对拼接串。 */
   assert.strictEqual(data.methods.map(function (method) { return method.key; }).join(','),
     'custom_jpeg,custom_uniform,matlab_jpeg', '方法顺序与前端线型约定不一致');
+  assert.strictEqual(data.subsamplings.map(function (item) { return item.key; }).join(','),
+    '444,422,420', '采样顺序与前端线型约定不一致');
 
   /* 10.1 是风景照片自己的彩色实测：直接用 color_reference.js，屏幕上的每个点都要能对上
-     results/color_measurements.csv，所以这里连“30 组 / 3 种采样”一起断言 */
+     results/color_reference.json（自编频率加权 30 组），所以这里连“30 组 / 3 种采样”一起断言 */
   const color = sandbox.window.COLOR_REFERENCE;
   assert.ok(color, '缺少 web/color_reference.js');
   assert.strictEqual(color.cases.length, 30, '彩色实测应为 30 组');
@@ -559,21 +562,24 @@ test('MATLAB 实测节点：四页图表均由导出的实测数据驱动', func
   const rateIndex = findFlowIndex(function (entry) { return page.STEPS[entry.step].id === 'matlabRate'; });
   goTo(rateIndex);
   assert.ok(store.stage.innerHTML.indexOf('matlab-legend') >= 0, '率失真页缺少图例');
+  assert.ok(store.stage.innerHTML.indexOf('matlab-takeaway') >= 0, '率失真页缺少结论条');
   assert.ok(store.matlabRateChart.width > 0, '率失真画布未绘制');
   assert.strictEqual(page.chapterLabel(flowEntries[rateIndex]), '10.2');
 
   const sparsityIndex = findFlowIndex(function (entry) { return page.STEPS[entry.step].id === 'matlabSparsity'; });
   goTo(sparsityIndex);
+  assert.ok(store.stage.innerHTML.indexOf('matlab-takeaway') >= 0, '稀疏度页缺少结论条');
   assert.ok(store.matlabSparsityChart.width > 0, '稀疏度画布未绘制');
   assert.strictEqual(page.chapterLabel(flowEntries[sparsityIndex]), '10.3');
 
   const matchedIndex = findFlowIndex(function (entry) { return page.STEPS[entry.step].id === 'matlabMatchedRate'; });
   goTo(matchedIndex);
   assert.ok(store.matlabMatchedChart.width > 0, '等码率画布未绘制');
-  assert.ok(store.stage.innerHTML.indexOf('16 个插值点明细') >= 0, '缺少等码率明细表');
+  assert.ok(store.stage.innerHTML.indexOf('matlab-takeaway') >= 0, '等码率页缺少结论条');
+  assert.ok(store.stage.innerHTML.indexOf('12 个插值点明细') >= 0, '缺少等码率明细表');
   assert.strictEqual(page.chapterLabel(flowEntries[matchedIndex]), '10.4');
 
-  /* 章内顺序：彩色（风景照片）必须先于灰度 120 组 */
+  /* 章内顺序：30 组彩色参考表在前，70 组彩色实测在后 */
   const chapterOrder = flowEntries
     .filter(function (entry) { return entry.chapter === 'matlab'; })
     .map(function (entry) { return page.STEPS[entry.step].id; })
