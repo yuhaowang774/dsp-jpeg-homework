@@ -42,7 +42,7 @@
       /* 64 项铺满 10.24 秒，一项一拍 160ms，匀速不跳格 */
       basissum: { trigger: '步骤05 逐项叠加重建按钮', duration: 10240, easing: 'linear', transition: '二维 64 项按 |F| 降序叠加 + 重建块逼近原块' },
       /* 64 项铺满 9.6 秒，一格一拍 150ms，走完一轮停一下再从头巡览 */
-      coefftour: { trigger: '步骤05 逐项巡览按钮', duration: 9600, easing: 'linear', transition: '64 张基图按 (u,v) 顺序逐个高亮 + 三联图同步更换' },
+      coefftour: { trigger: '步骤05 逐项巡览按钮', duration: 9600, easing: 'linear', transition: '64 张基图按 (u,v) 顺序逐个高亮 + 两图同步更换' },
       /* 16 拍（8 行 + 8 列）铺满 12.8 秒，一拍 800ms，够看清每行/每列的结果 */
       twopass: { trigger: '步骤05 行列分解按钮', duration: 12800, easing: 'linear', transition: '每拍一行/一列，匀速扫过' },
       quant: { trigger: '步骤06 量化按钮', duration: 2300, easing: 'steps', transition: '量化系数逐格替换' },
@@ -1613,10 +1613,10 @@
         title: 'DCT ⑥：64 张基图，64 个权重',
         lead: '这一页看 64 个系数各自代表什么图案、单独一项能贡献多少。',
         principle: '<p><b>基图 = 纵向余弦 × 横向余弦。</b>u 管纵向条纹密度、v 管横向；(0,0) 是一片均匀，(7,7) 是最密的棋盘格。系数是权重而非亮度，负值只表示相位相反。</p>' +
-          '<p><b>下方三联图：</b>① 基图长什么样；② 乘上系数后对像素的加减，白提亮、黑压暗；③ 只留这一项能画出什么。</p>' +
+          '<p><b>下方两图：</b>① 基图长什么样；② 乘上系数后对像素的加减，白提亮、黑压暗。</p>' +
           '<p><b>能量集中在左上。</b>自然图像的系数从左上往右下迅速变小，低频十几项常占九成能量——这正是高频可以被砍掉的前提。</p>',
         formula: 'F(u,v) = ΣxΣy f(x,y)·B_uv(x,y)\n单项贡献 = F(u,v)·B_uv(x,y)\n反变换：f = ΣuΣv F(u,v)·B_uv\n能量守恒：Σf² = ΣF²（帕塞瓦尔）',
-        tips: ['系数是权重：正=同相位，负=反相位', '|F| 越大，这一项对还原越重要', '单项画不出原块，64 项相加才行', '「逐项巡览」按 (u,v) 顺序自动走完 64 项，三联图同步换'],
+        tips: ['系数是权重：正=同相位，负=反相位', '|F| 越大，这一项对还原越重要', '单项画不出原块，64 项相加才行', '「逐项巡览」按 (u,v) 顺序自动走完 64 项，两图同步换'],
         params: function () {
           const block = encodedBlock();
           return [
@@ -2434,17 +2434,28 @@
     readout.textContent = '右图读法：蓝 = 比平均暗（负），红 = 比平均亮（正），浅色 ≈ 0（与均值相当）。';
   }
 
-  /* 这一页是“系数矩阵 + 64 张基图 + 三联图”三层方形图叠起来，两个主图按满宽放任时
-     总高超过一屏，一屏装下算法只能把三块一起压到 0.4 倍——矩阵格子里的数字会小到
-     看不清、左侧还留一片空白。先按可用高度给两张主图一个上限，让矩阵保持可读尺寸，
-     fit 只做小幅修正；窗口变化时会随整页重绘重新计算。 */
-  function dctPictureCap() {
+  /* 系数页的左列是矩阵 + 两张贡献图，右列是纵贯上下的 64 张基图。
+     三块方形图各给一个按可用高度算的上限，避免一屏装下算法把基图也压成邮票；
+     窗口变化时会随整页重绘重新计算。 */
+  function dctMatrixCap() {
     return (window.innerWidth || document.documentElement.clientWidth || 1200) >= 900
       ? clamp(Math.round(stageViewportHeight() * 0.42), 240, 620)
       : 0;
   }
 
-  /* ③ 二维视角：系数矩阵 + 64 张基图 + 单项贡献三联图 */
+  function dctGalleryCap() {
+    return (window.innerWidth || document.documentElement.clientWidth || 1200) >= 900
+      ? clamp(Math.round(stageViewportHeight() * 0.86), 360, 760)
+      : 0;
+  }
+
+  function dctTermCap() {
+    return (window.innerWidth || document.documentElement.clientWidth || 1200) >= 900
+      ? clamp(Math.round(stageViewportHeight() * 0.30), 180, 360)
+      : 0;
+  }
+
+  /* ③ 二维视角：系数矩阵 + 64 张基图 + 两项贡献图 */
   function renderDctBasisView() {
     stage.innerHTML = '<div class="dct-use-row">' +
       '<span class="note" id="coeffTourInfo"></span>' +
@@ -2452,16 +2463,18 @@
       '<button data-coeff="next">下一项 ▶</button>' +
       '<button data-coeff="play" id="coeffPlay">播放</button>' +
       '</div>' +
+      '<div class="dct-coeff-layout">' +
+      '<div class="dct-coeff-left">' +
       '<div class="dct-2d-top"><div class="dct-2d-col">' +
       figure('dctMain', 'DCT 系数矩阵 F(u,v)：点任意一格（或右侧基图）看这一项的贡献') +
-      '</div><div class="dct-2d-col">' +
-      figure('dctBasis', '64 张余弦基图像 B(u,v)：行 u = 纵向频率，列 v = 横向频率，点任意一张选中它') +
       '</div></div>' +
       '<div class="dct-term-row">' +
       figure('dctTermBasis', '① 基图 B(u,v)：固定图案') +
       figure('dctTermContribution', '② 基图 × 系数 F(u,v)：白=加亮，黑=压暗') +
-      figure('dctTermRebuild', '③ 只留这一项能画出的块（+128）') +
-      '</div>';
+      '</div></div>' +
+      '<div class="dct-2d-col dct-basis-col">' +
+      figure('dctBasis', '64 张余弦基图像 B(u,v)：行 u = 纵向频率，列 v = 横向频率，点任意一张选中它') +
+      '</div></div>';
     Array.prototype.forEach.call(stage.querySelectorAll('.dct-use-row button'), function (button) {
       button.addEventListener('click', function () {
         const kind = button.getAttribute('data-coeff');
@@ -2470,8 +2483,8 @@
         stepCoeffSelection(kind === 'next' ? 1 : -1);
       });
     });
-    /* 两列同宽同尺寸：删掉左侧的读数与统计卡后，矩阵和基图等高才不显得左轻右重 */
-    const target = setupCanvas('dctMain', 520, 520, dctPictureCap());
+    /* 左列矩阵按可读尺寸，右列基图单独放大，纵贯矩阵与贡献图两行 */
+    const target = setupCanvas('dctMain', 520, 520, dctMatrixCap());
     if (target) {
       target.canvas.addEventListener('click', function (event) {
         const rectangle = target.canvas.getBoundingClientRect();
@@ -2485,7 +2498,7 @@
         refreshDctBasisView();
       });
     }
-    const gallery = setupCanvas('dctBasis', 520, 520, dctPictureCap());
+    const gallery = setupCanvas('dctBasis', 520, 520, dctGalleryCap());
     if (gallery) {
       gallery.canvas.addEventListener('click', function (event) {
         const rectangle = gallery.canvas.getBoundingClientRect();
@@ -2502,21 +2515,19 @@
     refreshDctBasisView();
   }
 
-  /* 只重画这一页的五张画布（矩阵 / 基图 / 三联图）：巡览一拍换一项，
+  /* 只重画这一页的四张画布（矩阵 / 基图 / 两图）：巡览一拍换一项，
      整页重建 DOM 太贵，还会把控件上的监听一起丢掉再重绑。
-     三联图是补充说明，别让它抢到比主图还大：上限取主图上限的 2/3。 */
+     两图是补充说明，别让它抢到比主图还大：上限取主图上限的 2/3。 */
   function refreshDctBasisView() {
     const coefficients = encodedBlock().coefficients;
-    const cap = dctPictureCap();
-    const termCap = cap ? Math.round(cap * 0.66) : 0;
-    const matrix = setupCanvas('dctMain', 520, 520, cap);
-    const gallery = setupCanvas('dctBasis', 520, 520, cap);
+    const matrix = setupCanvas('dctMain', 520, 520, dctMatrixCap());
+    const gallery = setupCanvas('dctBasis', 520, 520, dctGalleryCap());
+    const termCap = dctTermCap();
     if (!matrix || !gallery) return;
     drawCoefficientMatrix(matrix);
     drawBasisGallery(gallery);
     drawDctTermViews(setupCanvas('dctTermBasis', 260, 260, termCap),
-      setupCanvas('dctTermContribution', 260, 260, termCap),
-      setupCanvas('dctTermRebuild', 260, 260, termCap), resolvedSelectedCoeff(coefficients));
+      setupCanvas('dctTermContribution', 260, 260, termCap), resolvedSelectedCoeff(coefficients));
     syncCoeffTourControls();
   }
 
@@ -2541,7 +2552,7 @@
   }
 
   /* 一轮 = 64 项：按 (u,v) 行优先一格一拍，走完停 1.6 秒再从 (0,0) 重来。
-     矩阵高亮、基图蓝框、三联图跟着一起换，形成步进循环的巡览动图。 */
+     矩阵高亮、基图蓝框、两图跟着一起换，形成步进循环的巡览动图。 */
   function startCoeffTour(startIndex) {
     if (state.step !== 4 || state.dctView !== 'coeff') return;
     stopVisualAnimations();
@@ -2799,8 +2810,8 @@
     }
   }
 
-  function drawDctTermViews(basisTarget, contributionTarget, rebuildTarget, index) {
-    if (!basisTarget || !contributionTarget || !rebuildTarget) return;
+  function drawDctTermViews(basisTarget, contributionTarget, index) {
+    if (!basisTarget || !contributionTarget) return;
     const coefficients = encodedBlock().coefficients;
     const u = Math.floor(index / 8);
     const v = index % 8;
@@ -2827,14 +2838,6 @@
       context.beginPath(); context.moveTo(i * cell, 0); context.lineTo(i * cell, contributionTarget.h); context.stroke();
       context.beginPath(); context.moveTo(0, i * cell); context.lineTo(contributionTarget.w, i * cell); context.stroke();
     }
-    const single = new Float64Array(64);
-    for (let y = 0; y < 8; y++) {
-      for (let x = 0; x < 8; x++) single[y * 8 + x] = weight * basisValue(u, v, x, y);
-    }
-    drawCells(rebuildTarget, single, function (value) {
-      const level = clamp(Math.round(128 + value), 0, 255);
-      return [level, level, level];
-    }, { gridColor: 'rgba(148,163,184,0.5)' });
   }
 
   function dctSumOrder(coefficients) {

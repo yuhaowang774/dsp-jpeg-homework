@@ -9,7 +9,7 @@
 <script defer src="color_reference.js"></script>
 <script defer src="matlab_results.js"></script>
 <script defer src="jpeg_codec.js"></script>
-<script defer src="app.js"></script>
+<script defer src="app.js?v=20261126b"></script>
 <title>JPEG 编解码流程实验台</title>
 <meta name="description" content="JPEG 编解码流程实验台：以 8×8 分块为主线，逐步演示 YCbCr 色度采样、DCT、量化、Zigzag 扫描、RLE 与 Huffman 熵编码、熵解码与 IDCT 重建，并给出可交互的画质对比。">
 <meta name="author" content="DSP 课程大作业">
@@ -130,9 +130,10 @@
   .stage-flex{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
   .stage-col{flex:1;min-width:0}
   .stage-col.hug{flex:0 1 auto}
-  /* 系数页两列等高：左矩阵、右 64 张基图，读数与统计卡已移除；
-     列宽跟着图走并整体居中，两张方图之间不再隔着一大片空白 */
-  .dct-2d-top{display:grid;grid-template-columns:repeat(2,auto);justify-content:center;column-gap:26px;align-items:start}
+  /* 系数页：左列放矩阵与两张贡献图，右列让 64 张基图纵贯上下 */
+  .dct-coeff-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+  .dct-coeff-left{display:flex;flex-direction:column;gap:12px;min-width:0}
+  .dct-2d-top{display:grid;grid-template-columns:repeat(2,auto);justify-content:center;align-items:start}
   .dct-2d-col{display:flex;flex-direction:column;gap:10px;min-width:0;align-items:center}
   .dct-2d-col figure{display:flex;flex-direction:column;align-items:center;width:100%}
   .dct-2d-col figcaption{align-self:flex-start}
@@ -243,9 +244,10 @@
   @media (max-width:900px){
     .rle-anatomy-row{grid-template-columns:repeat(2,minmax(0,1fr))}
   }
-  .dct-term-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:16px;padding-top:12px;border-top:1px dashed #e2e8f0}
+  .dct-term-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px;padding-top:12px;border-top:1px dashed #e2e8f0}
+  .dct-coeff-left .dct-term-row{margin-top:0;padding-top:0;border-top:0}
   .dct-term-row figure{display:flex;flex-direction:column;align-items:center}
-  .dct-term-row canvas{max-width:300px;margin:0 auto}
+  .dct-term-row canvas{max-width:360px;margin:0 auto}
   .dct-term-row figcaption{text-align:left;line-height:1.5}
   .source-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:center;width:100%}
   .source-figure{min-width:0;max-width:100%;display:flex;flex-direction:column;align-items:center}
@@ -705,6 +707,7 @@
     .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
     .second-pass-grid{grid-template-columns:minmax(0,100%)}
     .quant-grid{grid-template-columns:1fr}
+    .dct-coeff-layout{grid-template-columns:1fr}
     .dct-2d-top,.dct-shift-row,.dct-rebuild-row4{grid-template-columns:1fr}
     .freq-region-row,.freq-pairs{grid-template-columns:1fr}
     .hvs-luma-pairs{grid-template-columns:1fr}
