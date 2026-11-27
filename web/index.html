@@ -117,6 +117,8 @@
   .stage.compact .matlab-ref{padding:8px 12px;margin-top:10px}
   .stage.compact .matlab-takeaway{font-size:11.5px;line-height:1.55;padding:8px 10px;margin-top:8px}
   .stage.compact .scroll{max-height:200px}
+  /* 07.3 的标准表截图不是画布，自适应缩放管不到它：紧凑档里直接压低表图高度（点开仍可看原图） */
+  .stage.compact .t81-tables img{max-height:clamp(200px,28vh,420px)}
   /* 宽屏把指标卡铺成一行，省下的高度留给画布 */
   @media (min-width:1100px){
     .stage .stats{grid-template-columns:repeat(4,minmax(0,1fr))}
@@ -503,6 +505,7 @@
   .huff-bitline .c{color:#1d4ed8;font-weight:700}
   .huff-bitline .a{color:#b45309;font-weight:700;background:#fff6e2;border-radius:3px}
   .huff-bitline .partial{color:#64748b;background:#eef2f7;border-radius:3px;box-shadow:inset 0 0 0 1px #d3dde9}
+  .huff-bitline .partial .c,.huff-bitline .partial .a{color:inherit;background:none}
   .huff-bitline .bytegap{display:inline-block;width:0;height:15px;margin:0 7px;
     vertical-align:-.16em;border-left:1px dashed #9aabc2}
   .huff-legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin:6px 0 0;font-size:11.5px;color:var(--muted)}

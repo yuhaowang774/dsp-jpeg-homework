@@ -140,6 +140,8 @@
     decodeTimer: null,
     idctTimer: null,
     tourTimer: null,
+    /* 巡览开始前的分析块：巡览只是“扫一遍看看”，结束或被打断后要回到讲解用的那一块 */
+    tourOrigin: null,
     zigTimer: null,
     zigHold: null,
     dctPassTimer: null,
@@ -847,6 +849,7 @@
       state.dctRow = -1;
       state.dctRowStep = 8;
       state.dctColStep = 8;
+      state.dctPassStep = 16;
       state.assemblyStep = 0;
       encodeCurrent();
       render();
@@ -1056,12 +1059,12 @@
       lead: '同一个 8×8 块，F 一个数都不改，只把质量因子 QF 从 100 拖到 1：步长变大 → 商变小 → 归零的格越来越多。',
       principle: '<p><b>一条四格流水线。</b>原始系数 F 除以这一格的量化步长 q，得到商 F/q，再四舍五入成整数 Fq。商落在 ±0.5 之内就归 0，这一格整格被丢掉。</p>' +
         '<p><b>量化表按人眼设计。</b>低频步长小、高频步长大，所以高频的 F/q 更容易落进 ±0.5 被清零——这条与第 02 章「人眼对高频不敏感」对上了。</p>' +
-        '<p><b>QF 不改 F，只缩放量化表。</b>scale(QF) 在 QF &lt; 50 段取 5000/QF（双曲，越往小越陡），QF ≥ 50 段取 200−2QF（线性），所以 <b>QF = 50 是斜率换挡点</b>。同一格：q 变大 → 半个步长 q/2 变大 → 更多系数掉进 |F| &lt; q/2 的置零区。右侧拉杆与曲线就是把这条因果链一路走给观众看。</p>',
+        '<p><b>QF 不改 F，只缩放量化表。</b>scale(QF) 在 QF &lt; 50 段取 ⌊5000/QF⌋（双曲，越往小越陡），QF ≥ 50 段取 200−2QF（线性），所以 <b>QF = 50 是斜率换挡点</b>。同一格：q 变大 → 半个步长 q/2 变大 → 更多系数掉进 |F| &lt; q/2 的置零区。右侧拉杆与曲线就是把这条因果链一路走给观众看。</p>',
       formula: 'Fq(u,v) = round( F(u,v) / q(u,v) )\n' +
         'round(x)：x ≥ 0 时 ⌊x+0.5⌋，x < 0 时 ⌈x−0.5⌉\n' +
         '置零条件：|F ÷ q| < 0.5  ⇔  |F(u,v)| < q(u,v)/2\n' +
-        'q(u,v) = round( Qbase(u,v) × scale(QF) / 100 )\n' +
-        'QF<50  scale=5000/QF；QF≥50  scale=200−2QF',
+        'q(u,v) = clamp( round( Qbase(u,v) × scale(QF) / 100 ), 1, 255 )\n' +
+        'QF<50  scale=⌊5000/QF⌋；QF≥50  scale=200−2QF',
       tips: ['拖动右侧拉杆或点三个参考档，四宫格与置零数会跟着重算', 'q 变大 → 半个步长 q/2 变大 → 更多格落进置零区', '曲线在 QF = 50 处换挡：左侧双曲、右侧线性', 'QF=100 也不保证逐像素无损，取整误差始终存在'],
       params: function () {
         const view = quantView();
@@ -1132,7 +1135,7 @@
       }
     },
     {
-      id: 'huffman', short: 'Huffman', tag: '编码 09',
+      id: 'huffman', short: 'Huffman', tag: '编码 08',
       title: '规范 Huffman 编码',
       lead: '常见的符号配短码，罕见的配长码；码长表由 JPEG 标准给定，不为当前图像重新统计。一个系数最终写出的是「Huffman 码 + 幅值位」两段拼起来的比特。',
       principle: '<p><b>和教科书 Huffman 的关键区别：不现场统计。</b>传统 Huffman 先统计这张图的符号频率，再反复合并建树，还得把树写进码流。JPEG 不这么做：它用 T.81 附录 K 给定的<b>码长表</b>——「长度为 1 的有几个、长度为 2 的有几个……」。这张表是标准制定时按大量自然图像统计出来的，任何图像、任何块都用同一张，所以编码前不需要统计当前图像，也不用传树。</p>' +
@@ -1158,7 +1161,7 @@
       }
     },
     {
-      id: 'bitstream', short: '位流', tag: '编码 10',
+      id: 'bitstream', short: '位流', tag: '编码 09',
       title: '熵编码输出',
       lead: '每块写完就是一段比特，按 MCU 顺序首尾相接，拼成文件里真正的熵编码数据。',
       principle: '<p><b>三级量级，从下往上数。</b>一个 8×8 块约几百 bit；一个 MCU（4:2:0 下含 4 个 Y 块 + 1 个 Cb + 1 个 Cr）是几十到几千 bit；整幅图就是全部 MCU 的累加。</p>' +
@@ -1205,7 +1208,7 @@
       lead: '解码端把量化系数乘回量化步长，得到带误差的 DCT 系数。',
       principle: '<p>反量化只能恢复量化区间的中心值，无法恢复被丢弃的高频细节。量化步长越大，系数误差越大，块效应和振铃越明显。</p>',
       formula: 'F′(u,v) = Fq(u,v) × Q(u,v)\n系数误差 e = F′ − F',
-      tips: ['反量化不是逆运算，信息已丢失', '高频误差通常更大', 'QF 越小、步长越小，误差也越小'],
+      tips: ['反量化不是逆运算，信息已丢失', '高频误差通常更大', 'QF 越小、步长越大，误差也越大'],
       params: function () {
         const block = encodedBlock();
         const decoded = decodedBlock();
@@ -1228,7 +1231,7 @@
       title: 'IDCT 重建像素块',
       lead: '反量化系数经过二维 IDCT 回到空间域，再加 128 并截断到 0–255。',
       principle: '<p>IDCT 与 DCT 用同一组余弦基，只是转置相乘。浮点结果四舍五入后可能超出 0–255，需要截断，这一步也会带来少量误差。</p>',
-      formula: 'f(x,y) = 1/4·ΣuΣv C(u)C(v)F′(u,v)\n        ·cos((2x+1)uπ/16)·cos((2y+1)vπ/16)\n像素 = clamp(round(f + 128), 0, 255)',
+      formula: 'f(x,y) = 1/4·ΣuΣv C(u)C(v)F′(u,v)\n        ·cos((2y+1)uπ/16)·cos((2x+1)vπ/16)\n像素 = clamp(round(f + 128), 0, 255)',
       tips: ['块内误差集中在高频纹理处', '块边界不连续 → 块效应', 'IDCT 本身不引入量化误差'],
       params: function () {
         const block = encodedBlock();
@@ -1266,7 +1269,7 @@
           ['采样格式', state.subsampling === '444' ? '4:4:4' : state.subsampling === '422' ? '4:2:2' : '4:2:0'],
           ['质量因子 QF', state.Q],
           ['PSNR', state.psnr.toFixed(2) + ' dB'],
-          ['压缩比', (state.width * state.height * 3 / state.encoded.stats.fileBytes).toFixed(1) + '×（原始RGB/完整文件）']
+          ['压缩比', (state.width * state.height * 3 / state.encoded.stats.entropyBytes).toFixed(1) + '×（原始RGB/熵编码字节）']
         ];
       },
       tools: function () { return ''; }
@@ -1280,7 +1283,7 @@
       formula: 'Y  = 0.299R + 0.587G + 0.114B\nCb = 128 − 0.168736R − 0.331264G + 0.5B\nCr = 128 + 0.5R − 0.418688G − 0.081312B',
       tips: ['两张图同步跳动，幅度完全一样', '亮度那张：一亮一暗非常明显', '饱和度那张：同样的 5% 几乎看不出来'],
       params: function () {
-        const planes = Codec.rgbToYCbCr(state.rgb, state.width, state.height);
+        const planes = fullImagePlanes();
         return [
           ['Y 均值', mean(planes.y).toFixed(1)],
           ['Cb 均值', mean(planes.cb).toFixed(1)],
@@ -1520,7 +1523,7 @@
           '正交且完备 → 任意 8 个数都拆得开，且拆法唯一',
           '权重 = 与某个基做内积，不必解方程组',
           '8 项全用残差为 0；只有少用项才会失真',
-          'X(0) 是这行减 128 后的平均值，为负说明整行偏暗'
+          'X(0) = √8 × 这行减 128 后的均值，为负说明整行偏暗'
         ],
         params: function () {
           const row = state.dctRow < 0 ? bestRowOfBlock() : state.dctRow;
@@ -1639,8 +1642,8 @@
         title: 'DCT ⑤：二维 = 先逐行、再逐列做两次一维',
         lead: '二维 DCT 没有新数学：先逐行做一维（横向频率），再逐列做一维（纵向频率）。',
         principle: '<p><b>第一遍只动横向：</b>每行做一次一维 DCT，8 行各做一次，得到一张中间矩阵——此时纵向还是像素坐标。</p>' +
-          '<p><b>第二遍动纵向：</b>对中间矩阵的每列再做一次，纵向也变成频率，才得到 F(u,v)，矩阵式 F = T·f·Tᵀ。拆成两次一维是 2×8³ 次乘加，直接按二维算要 64²，差一个数量级——可分离性正是 JPEG 当年能跑在慢速硬件上的原因。</p>',
-        formula: 'F = T·f·Tᵀ\nT[u][x] = α_u·cos((2x+1)uπ/16)\n第一遍 T·f：每行独立 → 横向频率\n第二遍 (…)·Tᵀ：每列独立 → 纵向频率',
+          '<p><b>第二遍动纵向：</b>对中间矩阵的每列再做一次，纵向也变成频率，才得到 F(u,v)，矩阵式 F = T·f·Tᵀ。拆成两次一维是 2×8³ 次乘加，直接按二维算要 64²，计算量只剩 1/4——可分离性正是 JPEG 当年能跑在慢速硬件上的原因。</p>',
+        formula: 'F = T·f·Tᵀ\nT[u][x] = α_u·cos((2x+1)uπ/16)\n第一遍 f·Tᵀ：每行独立 → 横向频率\n第二遍 T·(…)：每列独立 → 纵向频率',
         tips: ['第一遍后纵向仍是像素，不是频率', '先列后行结果相同', '中途那张是“半成品”，不是最终系数'],
         params: function () {
           return [
@@ -1687,39 +1690,6 @@
             '<button data-action="prevBlock">上一块</button><button data-action="nextBlock">下一块</button>';
         }
       };
-    },
-    result: function () {
-      return {
-        short: '二次压缩结果',
-        title: '二次压缩结果',
-        lead: '把第一次重建出的像素再编码一次：文件大小几乎不变，PSNR 只掉零点几 dB——第一次量化已经把高频抹掉了，第二次没有更多细节可丢。',
-        principle:
-          '<p><b>什么叫二次压缩。</b>把第一次解码出来的 RGB 当作新输入，用同样的 QF 和采样再走一遍编码→解码。这模拟的是「图片被转存、转发、再保存一次」的真实场景，不是把文件重复压缩，而是对已经损失过的像素再量化一遍。</p>' +
-          '<p><b>为什么几乎不掉画质。</b>量化是可重复的：同一个系数再 round 一次还是同一个值，第一次量化已经让大多数高频系数归零，第二次没有更多可丢。真正造成差异的是 RGB ↔ YCbCr 往返的取整，误差只在 8×8 块边界上一点点累积。</p>' +
-          '<p><b>三张图怎么读。</b>左 = 第一次重建；中 = 二次重建；右 = 两次重建之差（放大 20 倍）。右图几乎全黑就是结论：肉眼看不到差别，损失集中在块边界。</p>',
-        tag: '收尾',
-        formula: '一次：Fq = round(F / q) → 重建像素\n二次：Fq′ = round(DCT(重建) / q)\n同一格子上 round 两次 ≈ 同一个值\n→ 熵位几乎不变，PSNR 只掉零点几 dB',
-        params: function () {
-          if (!state.encoded || !state.decoded) return [['状态', '等待编码']];
-          const second = secondPassResult();
-          return [
-            ['一次 PSNR', state.psnr.toFixed(2) + ' dB'],
-            ['二次 PSNR', second.psnr.toFixed(2) + ' dB'],
-            ['文件字节', state.encoded.stats.fileBytes + ' → ' + second.encoded.stats.fileBytes + ' B'],
-            ['采样 / QF', subsamplingText(state.subsampling) + ' / ' + state.Q]
-          ];
-        },
-        tips: [
-          '二次 PSNR 几乎等于一次 PSNR，说明信息不是第二次丢的',
-          '看第三张图：差异只在 8×8 块边界上',
-          '反复转存不会线性掉质，但每次都会累积一点点',
-          'PSNR 高不等于看着好，块边界才是人眼敏感处'
-        ],
-        /* 本页末尾接上 MATLAB 批量实验：整条编码流程讲完后，正好用实测数据收口 */
-        tools: function () {
-          return '<button class="primary" data-action="goto" data-target="matlab">下一章：MATLAB 实测数据</button>';
-        }
-      };
     }
   };
 
@@ -1752,19 +1722,6 @@
     return minimum + '–' + maximum;
   }
 
-  function entropyOf(values) {
-    const histogram = new Map();
-    for (let i = 0; i < values.length; i++) {
-      const key = Math.round(values[i] + 128);
-      histogram.set(key, (histogram.get(key) || 0) + 1);
-    }
-    let entropy = 0;
-    histogram.forEach(function (count) {
-      const probability = count / values.length;
-      entropy -= probability * Math.log2(probability);
-    });
-    return entropy;
-  }
 
   function maxAbsDifference(a, b) {
     let maximum = 0;
@@ -1778,11 +1735,6 @@
     return count;
   }
 
-  function countZero(values) {
-    let count = 0;
-    for (let i = 0; i < values.length; i++) if (values[i] === 0) count += 1;
-    return count;
-  }
 
   function colorBits(bits) {
     return bits.split('').map(function (bit) {
@@ -1856,15 +1808,6 @@
       'border-radius:4px;padding:0 5px">' + text + '</span>';
   }
 
-  function symbolTable(symbols, limit) {
-    const rows = symbols.slice(0, limit || 24).map(function (symbol) {
-      return '<tr><td>' + symbolLabel(symbol) + '</td><td>' + (symbol.kind === 'AC' || symbol.kind === 'DC' ? symbol.value : '—') +
-        '</td><td>' + bitChip(symbol.code) + '</td><td>' + symbol.code.length + '</td><td>' +
-        bitChip(symbol.amplitude, 'amp') + '</td></tr>';
-    }).join('');
-    return '<div class="scroll"><table class="data"><thead><tr><th>符号</th><th>值</th><th>码字</th><th>码长</th><th>幅值位</th></tr></thead><tbody>' +
-      rows + '</tbody></table></div>' + (symbols.length > (limit || 24) ? '<p class="note">仅显示前 ' + (limit || 24) + ' 个符号，共 ' + symbols.length + ' 个。</p>' : '');
-  }
 
   /* ------------------------------------------------------------------ */
   /* 各步骤可视化                                                        */
@@ -2002,6 +1945,9 @@
 
     target.canvas.addEventListener('click', function (event) {
       const block = blockAt(event);
+      /* 巡览中手动点块：停掉巡览，以用户点的这块为准，不再还原到巡览前 */
+      if (state.tourTimer) { clearInterval(state.tourTimer); state.tourTimer = null; }
+      state.tourOrigin = null;
       state.blockX = block.x;
       state.blockY = block.y;
       state.hoverBlock = null;
@@ -3320,147 +3266,6 @@
     return best;
   }
 
-  function drawRowWave(target) {
-    const context = target.ctx;
-    const data = dctRowValues(state.dctRow);
-    context.clearRect(0, 0, target.w, target.h);
-
-    const leftX = 22;
-    const leftWidth = 352;
-    const plotTop = 124;
-    const plotBottom = 262;
-    const rightX = 470;
-    const rightWidth = target.w - rightX - 26;
-
-    context.fillStyle = '#334155';
-    context.font = '600 12px "Microsoft YaHei", sans-serif';
-    context.textAlign = 'left';
-    context.textBaseline = 'alphabetic';
-    context.fillText('空间域：一行 8 个像素 x(0)–x(7)', leftX, 22);
-
-    const slot = leftWidth / 8;
-    for (let index = 0; index < 8; index++) {
-      const center = leftX + (index + 0.5) * slot;
-      const swatch = slot - 8;
-      const rgb = grayColor(data.pixels[index]);
-      context.fillStyle = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
-      context.fillRect(center - swatch / 2, 36, swatch, 46);
-      context.strokeStyle = 'rgba(21,32,51,0.25)';
-      context.lineWidth = 1;
-      context.strokeRect(center - swatch / 2 + 0.5, 36.5, swatch - 1, 45);
-      context.fillStyle = textColor(rgb);
-      context.font = '600 11px Consolas, monospace';
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.fillText(String(Math.round(data.pixels[index])), center, 59);
-    }
-
-    const yOf = function (value) { return plotBottom - (value / 255) * (plotBottom - plotTop); };
-    context.strokeStyle = 'rgba(148,163,184,0.6)';
-    context.lineWidth = 1;
-    context.setLineDash([4, 4]);
-    context.beginPath();
-    context.moveTo(leftX, plotTop); context.lineTo(leftX + leftWidth, plotTop);
-    context.moveTo(leftX, plotBottom); context.lineTo(leftX + leftWidth, plotBottom);
-    context.stroke();
-    context.setLineDash([]);
-    context.fillStyle = '#94a3b8';
-    context.font = '10.5px Consolas, monospace';
-    context.textAlign = 'left';
-    context.textBaseline = 'bottom';
-    context.fillText('255', leftX, plotTop - 4);
-    context.textBaseline = 'top';
-    context.fillText('0', leftX, plotBottom + 4);
-
-    context.strokeStyle = '#1d4ed8';
-    context.lineWidth = 2.4;
-    context.beginPath();
-    for (let index = 0; index < 8; index++) {
-      const center = leftX + (index + 0.5) * slot;
-      const y = yOf(data.pixels[index]);
-      if (index === 0) context.moveTo(center, y);
-      else context.lineTo(center, y);
-    }
-    context.stroke();
-    for (let index = 0; index < 8; index++) {
-      const center = leftX + (index + 0.5) * slot;
-      context.beginPath();
-      context.arc(center, yOf(data.pixels[index]), 3.8, 0, Math.PI * 2);
-      context.fillStyle = '#fff';
-      context.fill();
-      context.strokeStyle = '#1d4ed8';
-      context.lineWidth = 2;
-      context.stroke();
-    }
-
-    const arrowY = (plotTop + plotBottom) / 2;
-    const arrowStart = leftX + leftWidth + 16;
-    const arrowEnd = rightX - 26;
-    context.strokeStyle = '#64748b';
-    context.lineWidth = 2;
-    context.beginPath();
-    context.moveTo(arrowStart, arrowY);
-    context.lineTo(arrowEnd, arrowY);
-    context.stroke();
-    context.beginPath();
-    context.moveTo(arrowEnd, arrowY);
-    context.lineTo(arrowEnd - 9, arrowY - 5.5);
-    context.lineTo(arrowEnd - 9, arrowY + 5.5);
-    context.closePath();
-    context.fillStyle = '#64748b';
-    context.fill();
-    context.fillStyle = '#475569';
-    context.font = '600 11.5px "Microsoft YaHei", sans-serif';
-    context.textAlign = 'center';
-    context.textBaseline = 'bottom';
-    context.fillText('一维 DCT', (arrowStart + arrowEnd) / 2, arrowY - 7);
-
-    context.fillStyle = '#334155';
-    context.font = '600 12px "Microsoft YaHei", sans-serif';
-    context.textAlign = 'left';
-    context.textBaseline = 'alphabetic';
-    context.fillText('频率域：8 个系数 X(0)–X(7)', rightX, 22);
-
-    const maximum = Math.max(1, Math.max.apply(null, Array.from(data.coefficients).map(Math.abs)));
-    const baseline = (plotTop + plotBottom) / 2;
-    const halfHeight = (plotBottom - plotTop) / 2 - 20;
-    context.strokeStyle = 'rgba(148,163,184,0.85)';
-    context.lineWidth = 1;
-    context.beginPath();
-    context.moveTo(rightX, baseline);
-    context.lineTo(rightX + rightWidth, baseline);
-    context.stroke();
-    context.fillStyle = '#94a3b8';
-    context.font = '10.5px Consolas, monospace';
-    context.textAlign = 'right';
-    context.textBaseline = 'bottom';
-    context.fillText(formatValue(maximum), rightX + rightWidth, baseline - 3);
-    context.textBaseline = 'top';
-    context.fillText('−' + formatValue(maximum), rightX + rightWidth, baseline + 3);
-
-    const barSlot = rightWidth / 8;
-    for (let k = 0; k < 8; k++) {
-      const center = rightX + (k + 0.5) * barSlot;
-      const value = data.coefficients[k];
-      const height = Math.abs(value) / maximum * halfHeight;
-      const width = barSlot * 0.5;
-      context.fillStyle = value >= 0 ? 'rgba(220,38,38,0.85)' : 'rgba(29,78,216,0.85)';
-      context.fillRect(center - width / 2, value >= 0 ? baseline - height : baseline, width, Math.max(1.5, height));
-      context.fillStyle = value >= 0 ? '#b91c1c' : '#1d4ed8';
-      context.font = '600 10.5px Consolas, monospace';
-      context.textAlign = 'center';
-      if (value >= 0) {
-        context.textBaseline = 'bottom';
-        context.fillText(formatValue(value), center, baseline - height - 4);
-      } else {
-        context.textBaseline = 'top';
-        context.fillText(formatValue(value), center, baseline + height + 4);
-      }
-      context.fillStyle = '#64748b';
-      context.textBaseline = 'top';
-      context.fillText('X' + k, center, plotBottom + 6);
-    }
-  }
 
   /* 一维页只留两张主图：左边「叠加到哪了」，右边「这一项长什么样」。
      8 个基函数的小图已经单独成一页，这里不再挤进同一块画布。 */
@@ -3841,7 +3646,7 @@
       '</div>' +
       '<div class="grid-3">' +
       figure('passOriginal', '原块 f(x,y)（已 −128）') +
-      figure('passTemp', '第 1 次：对每行做 1D DCT（行=y，列=u）') +
+      figure('passTemp', '第 1 次：对每行做 1D DCT（行=y，列=v）') +
       figure('passFinal', '第 2 次：对每列做 1D DCT（行=u，列=v）') +
       '</div>' +
       '<div class="dct-pass-row">' +
@@ -4308,8 +4113,10 @@
         state.qfReturn = null;
         applyQuantQuality(back, true);
       } else {
-        state.qfReturn = state.Q;
+        /* rebuild() 会经 stopVisualAnimations 清空 qfReturn，必须在其后再记 */
+        const back = state.Q;
         applyQuantQuality(5, true);
+        state.qfReturn = back;
       }
       return;
     }
@@ -4799,6 +4606,10 @@
         break;
       }
     }
+    /* 本块没有 run > 0 的 AC 时，按顺序补满 4 张，免得标题说“4 个”却只出 3 张 */
+    for (let i = 1; i < symbols.length && picked.length < 4; i++) {
+      if (!picked.some(function (item) { return item.index === i; })) picked.push({ symbol: symbols[i], index: i });
+    }
     const cards = picked.map(function (entry) {
       const symbol = entry.symbol;
       let label;
@@ -5030,19 +4841,25 @@
       position += symbol.amplitude.length;
     });
     const offset = (block.bitStart || 0) % 8;
-    let html = '';
+    /* 本块从某字节中途开始时，首字节只剩 8 − offset 位属于本块（块很短时还要再截到块长）。
+       这几位里可能既有码字又有幅值位，会被切成好几段；原来只给第一段加灰底，
+       灰底位数就和图例写的「只有 8 − offset 位」对不上。现在把首字节的所有段包进同一个灰底。 */
+    const headBits = offset > 0 ? Math.min(8 - offset, bits.length) : 0;
+    let html = headBits > 0 ? '<span class="partial">' : '';
     let index = 0;
     while (index < bits.length) {
-      if (index > 0 && (index + offset) % 8 === 0) html += '<i class="bytegap"></i>';
+      if (index > 0 && (index + offset) % 8 === 0) {
+        if (index === headBits) html += '</span>';
+        html += '<i class="bytegap"></i>';
+      }
       const kind = kinds[index] || 'c';
       /* 同类比特连成一段，但到字节边界就断开，好让虚线正好落在 8 位分组处 */
       let stop = index + 1;
       while (stop < bits.length && (kinds[stop] || 'c') === kind && (stop + offset) % 8 !== 0) stop += 1;
-      /* 首段不满 8 位 = 本块从该字节中途开始，前面几位属于上一块 */
-      const head = index === 0 && offset > 0 ? ' partial' : '';
-      html += '<span class="' + kind + head + '">' + bits.slice(index, stop) + '</span>';
+      html += '<span class="' + kind + '">' + bits.slice(index, stop) + '</span>';
       index = stop;
     }
+    if (headBits > 0 && headBits === bits.length) html += '</span>';
     const stats = state.encoded.stats;
     return '<div class="huff-stream">' +
       '<div class="huff-stream-head">编码后的数据：' + block.symbols.length +
@@ -5052,7 +4869,7 @@
       '<span class="lg-c"><i></i>Huffman 码字</span>' +
       '<span class="lg-a"><i></i>幅值位（系数本身的数值）</span>' +
       '<span class="lg-g"><i></i>字节边界（每 8 位）</span>' +
-      (offset > 0 ? '<span class="lg-note">灰底那段只有 ' + (8 - offset) +
+      (headBits > 0 ? '<span class="lg-note">灰底那段只有 ' + headBits +
         ' 位：该字节前 ' + offset + ' 位已被上一块用掉</span>' : '') +
       '</p>' +
       '<p class="note">块与块之间不补位：这 ' + bits.length + ' 位后面直接接下一块的码字。' +
@@ -5471,7 +5288,7 @@
       figure('finalError', '误差 ×10') +
       '</div><div style="margin-top:12px">' + metricCards([
         ['PSNR', state.psnr.toFixed(2) + ' dB', 'RGB 全通道'],
-        ['压缩比', (state.width * state.height * 3 / stats.fileBytes).toFixed(1) + '×', '原始RGB / 完整文件字节'],
+        ['压缩比', (state.width * state.height * 3 / stats.entropyBytes).toFixed(1) + '×', '原始RGB / 熵编码字节'],
         ['总位数', stats.totalBits, 'bit'],
         ['采样格式', state.subsampling === '444' ? '4:4:4' : state.subsampling === '422' ? '4:2:2' : '4:2:0', '色度分辨率'],
         ['质量因子 QF', state.Q, '控制量化步长'],
@@ -5569,7 +5386,8 @@
         '<td>' + item.quality + '</td>' +
         '<td>' + item.entropyBits + '</td>' +
         '<td>' + item.fileBytes + '</td>' +
-        '<td>' + (state.width * state.height * 3 / item.fileBytes).toFixed(1) + '×</td>' +
+        /* 与 07.4 / 08.4 读数同口径：分母是熵编码字节（含末尾补位，不含表、标记与 FF00 填充） */
+        '<td>' + (state.width * state.height * 3 / ((item.entropyBits + item.paddingBits) / 8)).toFixed(1) + '×</td>' +
         '<td>' + item.psnr.toFixed(3) + '</td>' +
         '<td>' + (100 * item.zeroFraction).toFixed(2) + '</td></tr>';
     }).join('');
@@ -5577,7 +5395,7 @@
       '<summary class="matlab-ref-head">MATLAB 实测对照<span>同一份 1024×1024 像素（无损 PNG 导出）、同一套量化表与 Huffman 表；着色行 = 当前设置（点此展开）</span></summary>' +
       '<p class="matlab-ref-live">' + live + '</p>' +
       '<div class="matlab-ref-scroll"><table><thead><tr><th>采样</th><th>QF</th><th>熵位</th>' +
-      '<th>文件字节</th><th>压缩比</th><th>PSNR</th><th>零系数%</th></tr></thead><tbody>' +
+      '<th>文件字节</th><th>压缩比（熵编码）</th><th>PSNR</th><th>零系数%</th></tr></thead><tbody>' +
       rows + '</tbody></table></div>' +
       '<p class="matlab-ref-foot">数据来源：src/run_color_experiment.m（' + reference.generatedBy + '，' +
       reference.generatedAt + '）；网页复算与 MATLAB 逐位相同，差值应为 0。</p>' +
@@ -6284,103 +6102,17 @@
 
   let visualCache = null;
 
-  function halfScale(plane, width, height, upsample, factor, nearest) {
-    const step = factor || 2;
-    const halfW = Math.ceil(width / step);
-    const halfH = Math.ceil(height / step);
-    const small = new Float32Array(halfW * halfH);
-    for (let y = 0; y < halfH; y++) {
-      for (let x = 0; x < halfW; x++) {
-        let sum = 0;
-        let count = 0;
-        for (let dy = 0; dy < step; dy++) {
-          for (let dx = 0; dx < step; dx++) {
-            const sx = Math.min(width - 1, x * step + dx);
-            const sy = Math.min(height - 1, y * step + dy);
-            sum += plane[sy * width + sx];
-            count += 1;
-          }
-        }
-        small[y * halfW + x] = sum / count;
-      }
-    }
-    if (!upsample) return { plane: small, width: halfW, height: halfH };
-    const full = new Float32Array(width * height);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        if (nearest) {
-          full[y * width + x] = small[
-            Math.min(halfH - 1, Math.floor(y / step)) * halfW + Math.min(halfW - 1, Math.floor(x / step))
-          ];
-          continue;
-        }
-        const fx = x / step - 0.5;
-        const fy = y / step - 0.5;
-        const x0 = Math.floor(fx);
-        const y0 = Math.floor(fy);
-        const tx = fx - x0;
-        const ty = fy - y0;
-        const sx0 = clamp(x0, 0, halfW - 1);
-        const sx1 = clamp(x0 + 1, 0, halfW - 1);
-        const sy0 = clamp(y0, 0, halfH - 1);
-        const sy1 = clamp(y0 + 1, 0, halfH - 1);
-        const top = small[sy0 * halfW + sx0] * (1 - tx) + small[sy0 * halfW + sx1] * tx;
-        const bottom = small[sy1 * halfW + sx0] * (1 - tx) + small[sy1 * halfW + sx1] * tx;
-        full[y * width + x] = top * (1 - ty) + bottom * ty;
-      }
-    }
-    return { plane: full, width: width, height: height };
-  }
 
-  function frequencyFiltered(plane, width, height, keepLow, keepCount) {
-    const out = new Float32Array(width * height);
-    const block = new Float64Array(64);
-    const kept = new Uint8Array(64);
-    for (let k = 0; k < 64; k++) {
-      const index = Codec.ZIG[k][0] * 8 + Codec.ZIG[k][1];
-      kept[index] = (k < keepCount) === keepLow ? 1 : 0;
-    }
-    for (let by = 0; by < Math.ceil(height / 8); by++) {
-      for (let bx = 0; bx < Math.ceil(width / 8); bx++) {
-        for (let y = 0; y < 8; y++) {
-          for (let x = 0; x < 8; x++) {
-            block[y * 8 + x] = plane[
-              Math.min(height - 1, by * 8 + y) * width + Math.min(width - 1, bx * 8 + x)
-            ];
-          }
-        }
-        const coefficients = Codec.dct2(block);
-        const filtered = new Float64Array(64);
-        for (let i = 0; i < 64; i++) filtered[i] = kept[i] ? coefficients[i] : 0;
-        const rebuilt = Codec.idct2(filtered);
-        for (let y = 0; y < 8; y++) {
-          for (let x = 0; x < 8; x++) {
-            out[Math.min(height - 1, by * 8 + y) * width + Math.min(width - 1, bx * 8 + x)] = rebuilt[y * 8 + x];
-          }
-        }
-      }
-    }
-    return out;
-  }
 
   function buildVisualData() {
     const key = state.imageId + '|' + state.width + 'x' + state.height;
     if (visualCache && visualCache.key === key) return visualCache;
-    const width = state.width;
-    const height = state.height;
-    const planes = Codec.rgbToYCbCr(state.rgb, width, height);
-    const grayHalf = halfScale(planes.y, width, height, false);
-    const onlyHigh = frequencyFiltered(grayHalf.plane, grayHalf.width, grayHalf.height, false, 10);
-    for (let i = 0; i < onlyHigh.length; i++) onlyHigh[i] += 128;
+    /* 原来还预算了半尺寸灰度图的“只留低频 / 只留高频”两张滤波图，但页面早已不再显示，
+       每次换图白做两遍整幅分块 DCT，已删除；这里只保留真正被读取的字段。 */
     visualCache = {
       key: key,
       original: state.rgb,
-      planes: planes,
-      gray: grayHalf.plane,
-      onlyLow: frequencyFiltered(grayHalf.plane, grayHalf.width, grayHalf.height, true, 10),
-      onlyHigh: onlyHigh,
-      grayWidth: grayHalf.width,
-      grayHeight: grayHalf.height
+      planes: fullImagePlanes()
     };
     return visualCache;
   }
@@ -6588,80 +6320,7 @@
     }
   }
 
-  function drawCheckerInto(target, cell) {
-    const context = target.ctx;
-    context.clearRect(0, 0, target.w, target.h);
-    for (let y = 0; y < target.h; y += cell) {
-      for (let x = 0; x < target.w; x += cell) {
-        const odd = (Math.floor(x / cell) + Math.floor(y / cell)) % 2 === 1;
-        context.fillStyle = odd ? '#111827' : '#f8fafc';
-        context.fillRect(x, y, cell, cell);
-      }
-    }
-  }
 
-  /* 视频里那条“这行像素的亮度值”曲线：平缓处是低频，跳变处是高频。 */
-  function drawRowLumaCurve(target, planes) {
-    const context = target.ctx;
-    const width = state.width;
-    const height = state.height;
-    const plane = planes.y;
-    // 就取画面正中间那一行，观众可以直接和上面的图对上位置。
-    const bestRow = Math.floor(height / 2);
-    const left = 48;
-    const right = target.w - 18;
-    const top = 24;
-    const bottom = target.h - 30;
-    context.clearRect(0, 0, target.w, target.h);
-
-    context.font = '10px Consolas, monospace';
-    context.strokeStyle = 'rgba(148,163,184,0.45)';
-    context.lineWidth = 1;
-    context.setLineDash([4, 4]);
-    [0, 64, 128, 192, 255].forEach(function (value) {
-      const y = bottom - value / 255 * (bottom - top);
-      context.beginPath();
-      context.moveTo(left, y);
-      context.lineTo(right, y);
-      context.stroke();
-      context.fillStyle = '#94a3b8';
-      context.textAlign = 'right';
-      context.textBaseline = 'middle';
-      context.fillText(String(value), left - 6, y);
-    });
-    context.setLineDash([]);
-
-    const scaleX = (right - left) / Math.max(1, width - 1);
-    for (let x = 1; x < width; x++) {
-      const previous = plane[bestRow * width + x - 1];
-      const current = plane[bestRow * width + x];
-      const jump = Math.abs(current - previous);
-      context.strokeStyle = jump >= 18 ? 'rgba(194,65,12,0.9)' : 'rgba(29,78,216,0.85)';
-      context.lineWidth = jump >= 18 ? 1.8 : 1.2;
-      context.beginPath();
-      context.moveTo(left + (x - 1) * scaleX, bottom - previous / 255 * (bottom - top));
-      context.lineTo(left + x * scaleX, bottom - current / 255 * (bottom - top));
-      context.stroke();
-    }
-
-    context.fillStyle = '#334155';
-    context.font = '600 11px "Microsoft YaHei", sans-serif';
-    context.textAlign = 'left';
-    context.textBaseline = 'alphabetic';
-    context.fillText('第 ' + (bestRow + 1) + ' 行的亮度值（0–255）', left, 15);
-    context.font = '10.5px "Microsoft YaHei", sans-serif';
-    context.fillStyle = '#1d4ed8';
-    context.fillText('蓝：走得平 → 低频', left + 240, 15);
-    context.fillStyle = '#c2410c';
-    context.fillText('橙：跳得急 → 高频', left + 400, 15);
-    context.fillStyle = '#94a3b8';
-    context.font = '10px Consolas, monospace';
-    context.textAlign = 'left';
-    context.textBaseline = 'top';
-    context.fillText('像素位 0', left, bottom + 6);
-    context.textAlign = 'right';
-    context.fillText('像素位 ' + (width - 1), right, bottom + 6);
-  }
 
   /* ------------------------------------------------------------------ */
   /* 原理 03 追加：把两块区域“立”起来看（z 轴 = 亮度）                     */
@@ -7434,6 +7093,8 @@
   }
 
   function setStep(index) {
+    /* QF 扫掠途中换页：先回到开播前的 QF，否则后续各节按扫掠中间值重编码 */
+    if (state.qfTimer) stopQfSweep(true);
     state.flowIndex = clamp(index, 0, FLOW_ENTRIES.length - 1);
     const entry = FLOW_ENTRIES[state.flowIndex];
     state.step = entry.step;
@@ -7471,6 +7132,13 @@
       const left = current.offsetLeft - (stepper.clientWidth - current.offsetWidth) / 2;
       stepper.scrollLeft = Math.max(0, left);
     }
+    scheduleAutoplay(entry);
+  }
+
+  /* 进页自动播放的几页（DCT ④⑤⑥⑦、Zigzag）：由切页与窗口重排共用，
+     否则接投影、按 F11 重排后这些页会定格在半途、不再循环。 */
+  function scheduleAutoplay(entry) {
+    if (!entry) return;
     /* 行列分解页（DCT ⑤，subIndex 4）：进来就自动播一遍逐行 → 逐列的动图，之后循环 */
     if (entry.chapter === 'dct' && entry.subIndex === 4 && !ANIM.reduced) {
       state.dctPassHold = setTimeout(function () {
@@ -7565,6 +7233,18 @@
 
   function fitStageToViewport() {
     if (!stage) return;
+    /* 图片（如 07.3 的 T.81 表格截图）首次进入时往往还没解码完，此刻量到的高度偏小，
+       会误判「装得下」而不进紧凑档；等图片加载完再重新量一次。 */
+    Array.prototype.forEach.call(stage.querySelectorAll('img'), function (image) {
+      if (image.tagName !== 'IMG' || image.complete !== false || image.dataset.fitPending) return;
+      image.dataset.fitPending = '1';
+      const refit = function () {
+        delete image.dataset.fitPending;
+        if (stage.contains(image)) fitStageToViewport();
+      };
+      image.addEventListener('load', refit, { once: true });
+      image.addEventListener('error', refit, { once: true });
+    });
     shrinkStageToViewport();
     /* 记下这次最终显示的宽度，之后点步进按钮只重画位图时沿用同一尺寸 */
     Array.prototype.forEach.call(stage.querySelectorAll('canvas'), function (canvas) {
@@ -7651,6 +7331,7 @@
     /* 防抖：拖动窗口时只在停下来后重排一次，避免每帧重建画布 */
     resizeTimer = setTimeout(function () {
       resizeTimer = null;
+      if (state.qfTimer) stopQfSweep(true);
       const width = window.innerWidth || document.documentElement.clientWidth || 1200;
       const height = window.innerHeight || document.documentElement.clientHeight || 800;
       const dpr = window.devicePixelRatio || 1;
@@ -7663,6 +7344,7 @@
       refreshViewportFlags();
       stopVisualAnimations();
       render({ animate: false });
+      scheduleAutoplay(FLOW_ENTRIES[state.flowIndex]);
     }, 220);
   }
 
@@ -7726,7 +7408,7 @@
     /* 之前在别的 DCT 子页（例如快捷键 B）：必须按整页流程跳到一维页，
        否则新布局既不重算“一屏装下”（画布拿到满尺寸），步骤条与左侧说明也停在原页。 */
     if (state.dctView !== 'oneD') {
-      gotoChapter('dct:2');
+      gotoChapter('dct:3');
       if (state.step !== 4 || state.dctView !== 'oneD') return;
       stopVisualAnimations();
     }
@@ -7768,7 +7450,7 @@
     stopVisualAnimations();
     /* 同 startBasis：换子页一律走整页渲染，尺寸与导航才会一致 */
     if (state.dctView !== 'rebuild') {
-      gotoChapter('dct:5');
+      gotoChapter('dct:6');
       if (state.step !== 4 || state.dctView !== 'rebuild') return;
       stopVisualAnimations();
     }
@@ -7802,6 +7484,8 @@
   }
 
   function stopVisualAnimations() {
+    /* 巡览途中换页：先把分析块还原，后续各节才用的是讲解块而不是巡览停下的位置 */
+    if (state.tourTimer) restoreTourOrigin();
     stopZigzag();
     stopLumaDemo();
     stopZoomDemo();
@@ -8094,7 +7778,7 @@
       const coefficient = decoded.dequantized[index];
       for (let y = 0; y < 8; y++) {
         for (let x = 0; x < 8; x++) {
-          sum[y * 8 + x] += coefficient * Codec.T[u][x] * Codec.T[v][y];
+          sum[y * 8 + x] += coefficient * Codec.T[u][y] * Codec.T[v][x];
         }
       }
     }
@@ -8113,7 +7797,7 @@
     let tick = 0;
     state.idctTimer = setInterval(function () {
       tick += 1;
-      const next = Math.min(64, Math.round(ANIM.progress('idct', tick, total) * 2));
+      const next = Math.min(64, Math.round(ANIM.progress('idct', tick, total) * 64));
       if (next !== state.idctStep) {
         state.idctStep = next;
         refreshIdct();
@@ -8141,12 +7825,12 @@
       const sum = accumulatedPixels(decoded, state.idctOrder, state.idctStep);
       for (let i = 0; i < 64; i++) reconstructed[i] = clamp(Math.round(sum[i] + 128), 0, 255);
     }
-    drawCells({ canvas: restoredCanvas, ctx: restoredCanvas.getContext('2d'), w: 260, h: 260 },
+    drawCells({ canvas: restoredCanvas, ctx: restoredCanvas.getContext('2d'), w: 360, h: 360 },
       reconstructed, grayColor, { text: function (value) { return String(Math.round(value)); }, gridColor: 'rgba(255,255,255,0.55)' });
     const error = new Float64Array(64);
     for (let i = 0; i < 64; i++) error[i] = reconstructed[i] - (block.pixels[i] + 128);
     const errorMaximum = idctErrorMaximum(block, decoded);
-    drawCells({ canvas: errorCanvas, ctx: errorCanvas.getContext('2d'), w: 260, h: 260 },
+    drawCells({ canvas: errorCanvas, ctx: errorCanvas.getContext('2d'), w: 360, h: 360 },
       error, function (value) { return heatColor(value, errorMaximum); },
       { gridColor: 'rgba(255,255,255,0.55)' });
     if (readout) {
@@ -8172,6 +7856,7 @@
   function startBlockTour() {
     if (state.step !== 0) return;
     if (state.tourTimer) clearInterval(state.tourTimer);
+    if (!state.tourOrigin) state.tourOrigin = { x: state.blockX, y: state.blockY };
     const columns = Math.ceil(state.width / 8);
     const rows = Math.ceil(state.height / 8);
     const xs = [];
@@ -8198,9 +7883,18 @@
         clearInterval(state.tourTimer);
         state.tourTimer = null;
         state.hoverBlock = null;
+        restoreTourOrigin();
+        if (state.step === 0) refreshSourceCanvas();
         renderLeft();
       }
     }, ANIM.interval('tour', total));
+  }
+
+  function restoreTourOrigin() {
+    if (!state.tourOrigin) return;
+    state.blockX = state.tourOrigin.x;
+    state.blockY = state.tourOrigin.y;
+    state.tourOrigin = null;
   }
 
   /* ------------------------------------------------------------------ */

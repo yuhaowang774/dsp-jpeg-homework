@@ -26,7 +26,8 @@ fprintf(fileId,'- %d组自编实验的量化系数与熵位数完全往返；全
 fprintf(fileId,'- 自编解码与 imread 的最大像素差：%d级（整数IDCT与色度上采样策略不同，只做有界校验）。\n\n', ...
     max(customRows.MaxDecoderDifference));
 
-fprintf(fileId,'## 4:4:4 下三种量化策略\n\n');
+% imwrite 只有 4:2:0 一条曲线，4:4:4 表里只有两种自编量化表。
+fprintf(fileId,'## 4:4:4 下两种自编量化策略\n\n');
 fprintf(fileId,'| QF | 方法 | 文件字节 | 压缩比 | bpp | PSNR/dB | 零系数比例 |\n');
 fprintf(fileId,'|---:|---|---:|---:|---:|---:|---:|\n');
 rows = measurements(measurements.Subsampling=="444",:);

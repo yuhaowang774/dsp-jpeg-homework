@@ -12,10 +12,20 @@ if ~isfolder(outputDirectory)
     mkdir(outputDirectory);
 end
 % 日志保留MATLAB真实版本和控制台进度，不伪造运行环境。
-diary(fullfile(outputDirectory,'matlab_run.log'));
+% diary 默认追加写入，先删掉旧日志，保证日志只对应本次运行。
+logFile = fullfile(outputDirectory,'matlab_run.log');
+diary('off');
+if isfile(logFile)
+    delete(logFile);
+end
+diary(logFile);
 diaryGuard = onCleanup(@() diary('off'));
 fprintf('JPEG experiment | MATLAB %s | release %s\n',version,version('-release'));
-assert(strcmp(version('-release'),'2024b'),'本轮指定用MATLAB R2024b运行。');
+% 结果在 R2024b 上生成；其他版本只提示不阻断，避免评阅机版本不同就无法运行。
+if ~strcmp(version('-release'),'2024b')
+    warning('jpeg:Release','本项目在 MATLAB R2024b 上验证，当前为 R%s，结果应一致但未逐位核对。', ...
+        version('-release'));
+end
 started = tic;
 testResults = run_tests(fullfile(outputDirectory,'tests'));
 dataset = load_color_dataset(fullfile(root,'data'));

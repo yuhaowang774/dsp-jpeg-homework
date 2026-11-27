@@ -93,6 +93,8 @@ for methodIndex = 1:numel(methods)
                 'declared',quality,imageWidth,imageHeight,rgb,reconstructed,listing.bytes, ...
                 info.zeroFraction,info.entropyBits,info.paddingBits,info.stuffingBytes, ...
                 info.headerAndMarkerBytes,maxDecoderDifference,encodeSeconds,decodeSeconds); %#ok<AGROW>
+            % 上面已断言量化系数逐个相等，这里把结果写进表格，而不是留 NaN。
+            records{recordIndex}.ExactCoefficientRoundtrip = exact; %#ok<AGROW>
             if strcmp(method.key,'custom_jpeg')
                 referenceIndex = referenceIndex+1;
                 referenceCases{referenceIndex} = reference_case(quality,subsampling, ...
@@ -113,7 +115,7 @@ reference.width = imageWidth;
 reference.height = imageHeight;
 reference.sourceChannelSums = sourceSums;
 reference.generatedBy = version;
-reference.generatedAt = datestr(now,'yyyy-mm-dd HH:MM:SS');
+reference.generatedAt = char(datetime('now','Format','yyyy-MM-dd HH:mm:ss'));
 reference.notes = ['只收自编频率加权表的 30 组：与 web/jpeg_codec.js 逐位一致（熵位数、' ...
     '分量位数、零系数占比、PSNR 相同）；压缩比按 原始RGB字节/完整文件字节 计算；' ...
     'imread 仅作有界交叉验证。等步长与 imwrite 组见 measurements.csv。'];

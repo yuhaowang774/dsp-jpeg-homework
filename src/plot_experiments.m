@@ -27,8 +27,10 @@ layout = tiledlayout(figureHandle,2,3,'Padding','compact','TileSpacing','compact
 axesHandle = nexttile(layout);
 show_rgb(axesHandle,image);
 title(axesHandle,sprintf('原图 | %d×%d | %d B',size(image,2),size(image,1),numel(image)),'FontSize',11);
+decodedQ50 = struct();
 for subsampling = {'444','422','420'}
     reconstructed = decode_case(outputDirectory,imageName,'custom_jpeg',subsampling{1},50);
+    decodedQ50.(['s' subsampling{1}]) = reconstructed;
     row = measurements(measurements.Method=="custom_jpeg" & ...
         measurements.Subsampling==subsampling{1} & measurements.Quality==50,:);
     axesHandle = nexttile(layout);
@@ -37,7 +39,8 @@ for subsampling = {'444','422','420'}
         row.CompressionRatio,row.PSNR),'FontSize',11);
 end
 for subsampling = {'444','420'}
-    reconstructed = decode_case(outputDirectory,imageName,'custom_jpeg',subsampling{1},50);
+    % 上面已解码过同一文件，直接复用，避免整幅1024²再解一遍。
+    reconstructed = decodedQ50.(['s' subsampling{1}]);
     axesHandle = nexttile(layout);
     difference = mean(abs(double(image)-double(reconstructed)),3)*10;
     imagesc(axesHandle,difference,[0 120]);
@@ -47,7 +50,7 @@ for subsampling = {'444','420'}
     colorbar(axesHandle);
     title(axesHandle,sprintf('%s 误差 ×10（0–120 饱和）',subsampling{1}),'FontSize',11);
 end
-title(layout,'输入与色度采样重建：亮度不降采样，误差集中在彩色细节','FontName','Microsoft YaHei','FontSize',17);
+title(layout,'输入与色度采样重建：亮度不降采样，误差集中在彩色细节','FontName',chinese_font(),'FontSize',17);
 save_figure(figureHandle,figureDirectory,'01_dataset');
 
 % 图2：每种采样一块面板，三种量化策略按实测点连线。
@@ -87,7 +90,7 @@ for panelIndex = 1:numel(subsamplings)
     style_axes(axesHandle);
 end
 title(layout,'率失真曲线：同一采样下比量化策略，同一采样率下比采样格式', ...
-    'FontName','Microsoft YaHei','FontSize',17);
+    'FontName',chinese_font(),'FontSize',17);
 save_figure(figureHandle,figureDirectory,'02_rate_distortion');
 
 % 图3：固定4:2:0，同一张图的整图、64×64局部与固定量程绝对误差。
@@ -124,7 +127,7 @@ for columnIndex = 1:4
     title(axesHandle,'绝对误差：固定0～40，超出饱和','FontSize',11);
     colorbar(axesHandle);
 end
-title(layout,'4:2:0 下三个质量档：块效应随量化步长放大','FontName','Microsoft YaHei','FontSize',17);
+title(layout,'4:2:0 下三个质量档：块效应随量化步长放大','FontName',chinese_font(),'FontSize',17);
 save_figure(figureHandle,figureDirectory,'03_visual_comparison');
 
 % 图4：从确定位置的Y块解释“变换不丢失，量化才有损”。
@@ -158,7 +161,7 @@ for panelIndex = 1:6
     colorbar(axesHandle);
     title(axesHandle,panelTitles(panelIndex),'FontSize',11);
 end
-title(layout,'单块解释：DCT → 量化 → 反量化 → IDCT','FontName','Microsoft YaHei','FontSize',17);
+title(layout,'单块解释：DCT → 量化 → 反量化 → IDCT','FontName',chinese_font(),'FontSize',17);
 save_figure(figureHandle,figureDirectory,'04_block_pipeline');
 
 % 图5：零系数比例并不等于压缩率，三种采样各一条线。
@@ -193,7 +196,7 @@ for panelIndex = 1:2
     legend(axesHandle,legendHandles,legendLabels,'Location','best','FontSize',9,'Box','off');
     style_axes(axesHandle);
 end
-title(layout,'零系数比例不能代替实际压缩率：两者走势不同','FontName','Microsoft YaHei','FontSize',16);
+title(layout,'零系数比例不能代替实际压缩率：两者走势不同','FontName',chinese_font(),'FontSize',16);
 save_figure(figureHandle,figureDirectory,'05_sparsity_and_size');
 end
 
@@ -246,8 +249,8 @@ end
 function figureHandle = new_figure(dimensions)
 % 独立设置字体与窗口属性，不污染用户MATLAB的全局绘图默认值。
 figureHandle = figure('Visible','off','Color','w', ...
-    'Position',[80 80 dimensions],'DefaultAxesFontName','Microsoft YaHei', ...
-    'DefaultTextFontName','Microsoft YaHei','DefaultAxesFontSize',11);
+    'Position',[80 80 dimensions],'DefaultAxesFontName',chinese_font(), ...
+    'DefaultTextFontName',chinese_font(),'DefaultAxesFontSize',11);
 end
 
 function show_rgb(axesHandle,rgb)
@@ -277,4 +280,24 @@ function save_figure(figureHandle,outputDirectory,stem)
 exportgraphics(figureHandle,fullfile(outputDirectory,[stem '.png']),'Resolution',300);
 exportgraphics(figureHandle,fullfile(outputDirectory,[stem '.pdf']),'ContentType','vector');
 close(figureHandle);
+end
+
+function name = chinese_font()
+% 图中有中文：依次尝试 Windows / macOS / Linux 常见中文字体，
+% 都没有时退回 MATLAB 默认字体，避免在别的电脑上显示成方块或报错。
+persistent cached
+if isempty(cached)
+    % 中文版 Windows 的 listfonts 往往只列出 'Microsoft YaHei UI'，不列 'Microsoft YaHei'。
+    candidates = {'Microsoft YaHei','Microsoft YaHei UI','SimHei','PingFang SC','Heiti SC', ...
+        'Hiragino Sans GB','Noto Sans SC','Noto Sans CJK SC','Source Han Sans SC','WenQuanYi Micro Hei'};
+    available = listfonts;
+    cached = get(groot,'defaultAxesFontName');
+    for index = 1:numel(candidates)
+        if any(strcmpi(available,candidates{index}))
+            cached = candidates{index};
+            break;
+        end
+    end
+end
+name = cached;
 end

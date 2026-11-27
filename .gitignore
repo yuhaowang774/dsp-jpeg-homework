@@ -1,0 +1,7 @@
+# Playwright CLI 运行产物（页面快照与浏览器控制台日志），不属于工程内容
+.playwright-cli/
+
+# 前端验证脚本的依赖与 Python 字节码缓存
+node_modules/
+__pycache__/
+*.pyc

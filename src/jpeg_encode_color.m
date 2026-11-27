@@ -98,6 +98,8 @@ for mcuRow = 1:mcuRows
                     difference = scan(1)-previousDC(specIndex);
                     previousDC(specIndex) = scan(1);
                     [category,amplitude] = amplitude_bits(difference);
+                    % 基线 DC 类别最多 11；超出时码表为空，若不拦截会悄悄写出坏文件。
+                    assert(category<=11,'jpeg:CoefficientRange','DC差分类别超出基线范围。');
                     pieces = cell(1,130);
                     pieceCount = 1;
                     pieces{pieceCount} = [tables.dc.codes{category+1},amplitude];
