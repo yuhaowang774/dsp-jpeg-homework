@@ -2401,6 +2401,19 @@
       : 0;
   }
 
+  /* 系数矩阵左边的“原块”：画法与 05.5 行列分解页的“原块”一致（减 128 后的像素值），
+     上限跟矩阵共用，两块方形图并排时尺寸相同，方便按格号逐项对照空间域与频率域。 */
+  function drawDctBlockOriginal() {
+    const target = setupCanvas('dctBlockOriginal', 520, 520, dctMatrixCap());
+    if (!target) return;
+    drawCells(target, encodedBlock().pixels, function (value) {
+      return grayColor(value + 128);
+    }, {
+      text: function (value) { return String(Math.round(value + 128)); },
+      gridColor: 'rgba(255,255,255,0.55)'
+    });
+  }
+
   /* ③ 二维视角：系数矩阵 + 64 张基图 + 两项贡献图 */
   function renderDctBasisView() {
     stage.innerHTML = '<div class="dct-use-row">' +
@@ -2411,7 +2424,11 @@
       '</div>' +
       '<div class="dct-coeff-layout">' +
       '<div class="dct-coeff-left">' +
-      '<div class="dct-2d-top"><div class="dct-2d-col">' +
+      '<div class="dct-2d-top">' +
+      '<div class="dct-2d-col">' +
+      figure('dctBlockOriginal', '原块 f(x,y)（已 −128）') +
+      '</div>' +
+      '<div class="dct-2d-col">' +
       figure('dctMain', 'DCT 系数矩阵 F(u,v)：点任意一格（或右侧基图）看这一项的贡献') +
       '</div></div>' +
       '<div class="dct-term-row">' +
@@ -2430,6 +2447,7 @@
       });
     });
     /* 左列矩阵按可读尺寸，右列基图单独放大，纵贯矩阵与贡献图两行 */
+    drawDctBlockOriginal();
     const target = setupCanvas('dctMain', 520, 520, dctMatrixCap());
     if (target) {
       target.canvas.addEventListener('click', function (event) {
@@ -7830,9 +7848,11 @@
     const error = new Float64Array(64);
     for (let i = 0; i < 64; i++) error[i] = reconstructed[i] - (block.pixels[i] + 128);
     const errorMaximum = idctErrorMaximum(block, decoded);
+    /* 与静态页 renderIdctStep 保持同一套绘制参数：动画重画时同样标出像素误差，
+       否则播放一遍后第三张图会丢掉全部数字。 */
     drawCells({ canvas: errorCanvas, ctx: errorCanvas.getContext('2d'), w: 360, h: 360 },
       error, function (value) { return heatColor(value, errorMaximum); },
-      { gridColor: 'rgba(255,255,255,0.55)' });
+      { text: function (value) { return value === 0 ? '' : formatValue(value); }, gridColor: 'rgba(255,255,255,0.55)' });
     if (readout) {
       readout.textContent = '已叠加 ' + state.idctStep + '/64 个基函数' +
         (state.idctStep >= 64 ? '，IDCT 完成。' : '。');

@@ -247,7 +247,7 @@ const expectedByDctView = {
   basisGrid: ['dctCosineGrid'],
   oneD: ['dctRowBasis', 'dctRowCoeff'],
   twopass: ['passOriginal', 'passTemp', 'passFinal', 'passRow'],
-  coeff: ['dctMain', 'dctBasis', 'dctTermBasis', 'dctTermContribution'],
+  coeff: ['dctBlockOriginal', 'dctMain', 'dctBasis', 'dctTermBasis', 'dctTermContribution'],
   rebuild: ['rebuildTarget', 'rebuildSum', 'rebuildTerm', 'rebuildBasisIndex', 'rebuildBars', 'rebuildInfo']
 };
 

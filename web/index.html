@@ -135,7 +135,7 @@
   /* 系数页：左列放矩阵与两张贡献图，右列让 64 张基图纵贯上下 */
   .dct-coeff-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
   .dct-coeff-left{display:flex;flex-direction:column;gap:12px;min-width:0}
-  .dct-2d-top{display:grid;grid-template-columns:repeat(2,auto);justify-content:center;align-items:start}
+  .dct-2d-top{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;justify-content:center;align-items:start}
   .dct-2d-col{display:flex;flex-direction:column;gap:10px;min-width:0;align-items:center}
   .dct-2d-col figure{display:flex;flex-direction:column;align-items:center;width:100%}
   .dct-2d-col figcaption{align-self:flex-start}
@@ -705,6 +705,8 @@
     .opening-rule{gap:16px;padding:18px 20px}
     .opening-rule-no{font-size:36px}
     .opening-rule h3{font-size:24px}
+    /* 窄屏下「原块 + 系数矩阵」并排会把每块压成邮票，改为上下堆叠 */
+    .dct-2d-top{grid-template-columns:1fr}
   }
   @media (max-width:700px){
     .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
